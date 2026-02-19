@@ -150,7 +150,7 @@ function Footer() {
 function App() {
   return (
     <AppProvider>
-      <Router basename="/app">
+      <Router>
         <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-indigo-50/30 text-gray-800 font-sans">
           <Navbar />
           <main className="flex-1">

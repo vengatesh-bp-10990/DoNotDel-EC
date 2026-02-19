@@ -18,7 +18,7 @@ function Cart() {
 
     setLoading(true);
     try {
-      const res = await fetch('/server/do_not_del_ec_function/orders', {
+      const res = await fetch('https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

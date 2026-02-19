@@ -35,7 +35,7 @@ function Home() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   useEffect(() => {
-    fetch('/server/do_not_del_ec_function/products')
+    fetch('https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function/products')
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
