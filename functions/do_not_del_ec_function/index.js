@@ -255,18 +255,19 @@ app.post('/orders', async (req, res) => {
       Items: Items ? JSON.stringify(Items) : '[]',
       Payment_Method: Payment_Method || 'COD'
     });
-    res.status(201).json({ success: true, message: 'Order placed!', data: newOrder });
 
-    // Send order confirmation email (non-blocking)
+    // Send order confirmation email BEFORE response (so it completes before function exits)
     try {
       const userRes = await catalystApp.zcql().executeZCQLQuery(`SELECT Name, Email FROM Users WHERE ROWID = '${User_ID}'`);
       if (userRes.length > 0) {
-        const user = userRes[0].Users;
+        const user = userRes[0].Users || userRes[0];
         const items = Items || [];
         const html = orderPlacedEmail(user.Name, newOrder.ROWID, Total_Amount, items, Shipping_Address, Payment_Method || 'COD');
-        sendEmail(catalystApp, user.Email, `Order #${newOrder.ROWID} Placed - ${STORE_NAME}`, html);
+        await sendEmail(catalystApp, user.Email, `Order #${newOrder.ROWID} Placed - ${STORE_NAME}`, html);
       }
     } catch (emailErr) { console.error('Order email error:', emailErr.message); }
+
+    res.status(201).json({ success: true, message: 'Order placed!', data: newOrder });
   } catch (error) { console.error('Order error:', error); res.status(500).json({ success: false, message: error.message || 'Failed to create order' }); }
 });
 
@@ -412,21 +413,22 @@ app.put('/admin/order-status', async (req, res) => {
     if (!orderId || !status) return res.status(400).json({ success: false, message: 'orderId, status required' });
     const catalystApp = initCatalyst(req);
     await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Status: status });
-    res.json({ success: true, message: 'Status updated' });
 
-    // Send status update email (non-blocking)
+    // Send status update email BEFORE response
     try {
       const orderRes = await catalystApp.zcql().executeZCQLQuery(`SELECT User_ID, Total_Amount FROM Orders WHERE ROWID = '${orderId}'`);
       if (orderRes.length > 0) {
-        const order = orderRes[0].Orders;
+        const order = orderRes[0].Orders || orderRes[0];
         const userRes = await catalystApp.zcql().executeZCQLQuery(`SELECT Name, Email FROM Users WHERE ROWID = '${order.User_ID}'`);
         if (userRes.length > 0) {
-          const user = userRes[0].Users;
+          const user = userRes[0].Users || userRes[0];
           const html = statusUpdateEmail(user.Name, orderId, status, order.Total_Amount);
-          sendEmail(catalystApp, user.Email, `Order #${orderId} ${status} - ${STORE_NAME}`, html);
+          await sendEmail(catalystApp, user.Email, `Order #${orderId} ${status} - ${STORE_NAME}`, html);
         }
       }
     } catch (emailErr) { console.error('Status email error:', emailErr.message); }
+
+    res.json({ success: true, message: 'Status updated' });
   } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
@@ -461,17 +463,18 @@ app.post('/admin/auto-confirm', async (req, res) => {
     // Update to Confirmed
     await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Status: 'Confirmed' });
     console.log(`Order #${orderId} auto-confirmed via API`);
-    res.json({ success: true, message: 'Auto-confirmed', status: 'Confirmed' });
 
-    // Send email (non-blocking)
+    // Send email BEFORE response
     try {
       const userRes = await zcql.executeZCQLQuery(`SELECT Name, Email FROM Users WHERE ROWID = '${order.User_ID}'`);
       if (userRes.length > 0) {
         const user = userRes[0].Users || userRes[0];
         const html = statusUpdateEmail(user.Name, orderId, 'Confirmed', order.Total_Amount);
-        sendEmail(catalystApp, user.Email, `Order #${orderId} Auto-Confirmed - ${STORE_NAME}`, html);
+        await sendEmail(catalystApp, user.Email, `Order #${orderId} Auto-Confirmed - ${STORE_NAME}`, html);
       }
     } catch (emailErr) { console.error('Auto-confirm email error:', emailErr.message); }
+
+    res.json({ success: true, message: 'Auto-confirmed', status: 'Confirmed' });
   } catch (error) { console.error('Auto-confirm error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
@@ -551,18 +554,19 @@ app.post('/admin/product', async (req, res) => {
     const catalystApp = initCatalyst(req);
     const p = await catalystApp.datastore().table('Products').insertRow({ Name, Description: Description || '', Price, Category, Image_URL: Image_URL || '', Stock_Quantity: Stock_Quantity || 0 });
     await clearProductsCache(catalystApp);
-    res.status(201).json({ success: true, data: p });
 
-    // Send new product email to ALL users (non-blocking)
+    // Send new product email to ALL users BEFORE response
     try {
       const allUsers = await catalystApp.zcql().executeZCQLQuery('SELECT Name, Email FROM Users');
       const product = { Name, Description, Price, Category, Image_URL };
       for (const row of allUsers) {
-        const u = row.Users;
+        const u = row.Users || row;
         const html = newProductEmail(u.Name, product);
-        sendEmail(catalystApp, u.Email, `🆕 New Product: ${Name} - ${STORE_NAME}`, html);
+        await sendEmail(catalystApp, u.Email, `New Product: ${Name} - ${STORE_NAME}`, html);
       }
     } catch (emailErr) { console.error('New product email error:', emailErr.message); }
+
+    res.status(201).json({ success: true, data: p });
   } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
