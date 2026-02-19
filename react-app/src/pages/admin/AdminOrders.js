@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { useAdminNotifications } from '../../components/AdminLayout';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
@@ -17,6 +18,7 @@ const STATUS_COLORS = {
 function AdminOrders() {
   const { user, isAuthenticated } = useApp();
   const navigate = useNavigate();
+  const notif = useAdminNotifications();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -24,20 +26,35 @@ function AdminOrders() {
   const [updating, setUpdating] = useState(null);
   const [editingItems, setEditingItems] = useState(null);
   const [savingItems, setSavingItems] = useState(false);
+  const [newOrderFlash, setNewOrderFlash] = useState(null);
 
-  useEffect(() => {
-    if (!isAuthenticated || user?.Role !== 'Admin') { navigate('/'); return; }
-    fetchOrders();
-  }, [isAuthenticated, user, navigate]);
-
-  function fetchOrders() {
+  const fetchOrders = useCallback(() => {
     setLoading(true);
     fetch(`${API_BASE}/admin/orders`)
       .then(r => r.json())
       .then(data => { if (data.success) setOrders(data.data || []); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || user?.Role !== 'Admin') { navigate('/'); return; }
+    fetchOrders();
+  }, [isAuthenticated, user, navigate, fetchOrders]);
+
+  // Auto-refresh when new orders come in via polling
+  useEffect(() => {
+    if (!notif?.onNewOrder) return;
+    const unsubscribe = notif.onNewOrder((newOrders) => {
+      fetchOrders();
+      // Flash the new order IDs briefly
+      if (newOrders.length > 0) {
+        setNewOrderFlash(new Set(newOrders.map(o => o.ROWID)));
+        setTimeout(() => setNewOrderFlash(null), 3000);
+      }
+    });
+    return unsubscribe;
+  }, [notif, fetchOrders]);
 
   async function updateStatus(orderId, newStatus) {
     setUpdating(orderId);
@@ -152,7 +169,7 @@ function AdminOrders() {
             const isEditing = editingItems?.orderId === o.ROWID;
 
             return (
-              <div key={o.ROWID} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+              <div key={o.ROWID} className={`bg-white rounded-2xl shadow-sm border overflow-hidden hover:shadow-md transition-all duration-500 ${newOrderFlash?.has(o.ROWID) ? 'border-amber-400 ring-2 ring-amber-200 animate-pulse shadow-amber-100' : 'border-gray-100'}`}>
                 {/* Header */}
                 <div className="p-4 sm:p-5 cursor-pointer" onClick={() => { setExpandedId(isExpanded ? null : o.ROWID); if (isEditing) setEditingItems(null); }}>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

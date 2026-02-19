@@ -82,6 +82,28 @@
   animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Toast auto-dismiss progress bar */
+@keyframes shrink-width {
+  0% { width: 100%; }
+  100% { width: 0%; }
+}
+
+.animate-shrink-width {
+  animation: shrink-width 6s linear forwards;
+}
+
+/* Notification bell bounce */
+@keyframes bell-ring {
+  0%, 100% { transform: rotate(0); }
+  10%, 30%, 50% { transform: rotate(10deg); }
+  20%, 40% { transform: rotate(-10deg); }
+  60% { transform: rotate(0); }
+}
+
+.animate-bell-ring {
+  animation: bell-ring 1s ease-in-out;
+}
+
 /* Hide scrollbar for category pills */
 .scrollbar-hide {
   -ms-overflow-style: none;
