@@ -238,7 +238,8 @@ function Home() {
                   return (
                     <div key={product.ROWID} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 transition-all duration-300 group overflow-hidden flex flex-col">
                       <div className="relative aspect-square overflow-hidden bg-gray-50">
-                        <img src={product.Image_URL} alt={product.Name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                        <img src={product.Image_URL} alt={product.Name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy"
+                          onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgdmlld0JveD0iMCAwIDQwMCA0MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjQwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmNWY1ZjQiLz48dGV4dCB4PSIyMDAiIHk9IjIxMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1zaXplPSIxNiIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg=='; }} />
                         <span className="absolute top-2.5 left-2.5 bg-white/90 backdrop-blur-sm text-[10px] sm:text-xs font-semibold text-amber-700 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full shadow-sm">{product.Category}</span>
                         <button onClick={() => handleAddToCart(product)}
                           className={`absolute bottom-2.5 right-2.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 ${isAdded ? 'bg-emerald-500 text-white scale-110' : 'bg-white text-amber-600 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 hover:bg-amber-600 hover:text-white'}`}>
