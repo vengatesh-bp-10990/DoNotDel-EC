@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
+const API_BASE = '/server/do_not_del_ec_function';
 const POLL_INTERVAL = 10000; // 10 seconds
 const LS_KEY = 'admin_known_order_count';
 const LS_NOTIFS_KEY = 'admin_notifications';

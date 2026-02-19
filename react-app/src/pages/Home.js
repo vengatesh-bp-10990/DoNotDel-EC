@@ -35,7 +35,7 @@ function Home() {
   }, []);
 
   useEffect(() => {
-    fetch('https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function/products')
+    fetch('/server/do_not_del_ec_function/products')
       .then(r => r.json())
       .then(data => { if (data.success) setProducts(data.data); setLoading(false); })
       .catch(() => setLoading(false));

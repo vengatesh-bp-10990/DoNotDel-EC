@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const AppContext = createContext();
-const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
+const API_BASE = '/server/do_not_del_ec_function';
 
 function AppProvider({ children }) {
   /* ─── User State ─── */

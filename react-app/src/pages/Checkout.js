@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
-const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
+const API_BASE = '/server/do_not_del_ec_function';
 
 function DownloadInvoiceButton({ orderId }) {
   const [loading, setLoading] = React.useState(false);

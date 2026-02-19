@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
-const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
+const API_BASE = '/server/do_not_del_ec_function';
 
 function Profile() {
   const { user, isAuthenticated, loginUser, openAuthModal } = useApp();
