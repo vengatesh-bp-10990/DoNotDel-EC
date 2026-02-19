@@ -68,12 +68,10 @@ function AutoConfirmCountdown({ createdTime, orderId, expiredOrdersRef, onExpire
 
   if (remaining === null) return null;
   if (remaining <= 0) {
-    const expiry = new Date(createdTime).getTime() + AUTO_CONFIRM_MINUTES * 60 * 1000;
-    const waitingSecs = Math.floor((Date.now() - expiry) / 1000);
     return (
-      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full animate-pulse">
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-        Auto-confirming in {waitingSecs}s…
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+        <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+        Awaiting auto-confirm
       </span>
     );
   }

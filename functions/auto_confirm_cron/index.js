@@ -61,16 +61,28 @@ function statusUpdateEmail(customerName, orderId, newStatus, total) {
 }
 
 module.exports = async (cronDetails, context) => {
-  console.log('Cron auto-confirm triggered at', new Date().toISOString());
-  const catalystApp = catalyst.initialize(context);
-  const zcql = catalystApp.zcql();
+  console.log('=== Auto-confirm job triggered at', new Date().toISOString(), '===');
+  let catalystApp;
+  try {
+    catalystApp = catalyst.initialize(context);
+  } catch (initErr) {
+    console.error('Catalyst init failed:', initErr.message);
+    context.closeWithFailure();
+    return;
+  }
 
   try {
+    const zcql = catalystApp.zcql();
+
     // Get all Pending orders
+    console.log('Querying pending orders...');
     const pendingRes = await zcql.executeZCQLQuery(
       `SELECT ROWID, User_ID, Total_Amount, CREATEDTIME FROM Orders WHERE Status = 'Pending'`
     );
-    const pendingOrders = pendingRes.map(r => r.Orders);
+    console.log('Pending query result count:', pendingRes.length);
+    console.log('Raw result sample:', JSON.stringify(pendingRes[0] || 'none'));
+
+    const pendingOrders = pendingRes.map(r => r.Orders || r);
 
     if (!pendingOrders.length) {
       console.log('No pending orders to auto-confirm.');
@@ -82,40 +94,46 @@ module.exports = async (cronDetails, context) => {
     let confirmedCount = 0;
 
     for (const order of pendingOrders) {
+      console.log(`Processing order:`, JSON.stringify(order));
       const createdTime = new Date(order.CREATEDTIME).getTime();
       const elapsedMinutes = (now - createdTime) / 60000;
+      console.log(`Order #${order.ROWID}: created=${order.CREATEDTIME}, elapsed=${elapsedMinutes.toFixed(2)} min`);
 
       if (elapsedMinutes >= AUTO_CONFIRM_MINUTES) {
         const orderId = order.ROWID;
         const userId = order.User_ID;
 
         // Update order status to Confirmed
-        const table = catalystApp.datastore().table('Orders');
-        await table.updateRow({ ROWID: orderId, Status: 'Confirmed' });
-        console.log(`Order #${orderId} auto-confirmed (age: ${elapsedMinutes.toFixed(1)} min)`);
+        try {
+          const table = catalystApp.datastore().table('Orders');
+          await table.updateRow({ ROWID: orderId, Status: 'Confirmed' });
+          console.log(`Order #${orderId} auto-confirmed successfully`);
+          confirmedCount++;
+        } catch (updateErr) {
+          console.error(`Failed to update order #${orderId}:`, updateErr.message, updateErr.stack);
+          continue;
+        }
 
-        // Fetch user email for notification
+        // Send email notification (non-blocking)
         try {
           const userRes = await zcql.executeZCQLQuery(
             `SELECT Name, Email FROM Users WHERE ROWID = '${userId}'`
           );
           if (userRes.length > 0) {
-            const user = userRes[0].Users;
+            const user = userRes[0].Users || userRes[0];
             const html = statusUpdateEmail(user.Name, orderId, 'Confirmed', order.Total_Amount);
             await sendEmail(catalystApp, user.Email, `Order #${orderId} Auto-Confirmed - ${STORE_NAME}`, html);
           }
         } catch (emailErr) {
-          console.error(`Failed to send email for order #${orderId}:`, emailErr.message);
+          console.error(`Email failed for order #${orderId}:`, emailErr.message);
         }
-
-        confirmedCount++;
       }
     }
 
-    console.log(`Auto-confirm complete. ${confirmedCount}/${pendingOrders.length} orders confirmed.`);
+    console.log(`=== Auto-confirm done: ${confirmedCount}/${pendingOrders.length} confirmed ===`);
     context.closeWithSuccess();
   } catch (err) {
-    console.error('Auto-confirm cron error:', err.message);
+    console.error('Auto-confirm job error:', err.message, err.stack);
     context.closeWithFailure();
   }
 };
