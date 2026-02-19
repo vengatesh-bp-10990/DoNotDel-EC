@@ -2,12 +2,10 @@
 
 const express = require('express');
 const catalyst = require('zcatalyst-sdk-node');
-const cors = require('cors');
 const bcrypt = require('bcryptjs');
 
 const app = express();
 
-app.use(cors());
 app.use(express.json());
 
 // ─── POST /google-auth — Handle Google Sign-In credential ───
