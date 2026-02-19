@@ -10,6 +10,77 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ─── POST /google-auth — Handle Google Sign-In credential ───
+app.post('/google-auth', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ success: false, message: 'Google credential is required' });
+    }
+
+    // Decode the JWT payload (base64url encoded)
+    const parts = credential.split('.');
+    if (parts.length !== 3) {
+      return res.status(400).json({ success: false, message: 'Invalid credential format' });
+    }
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    const { email, name, sub: googleId } = payload;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Could not extract email from Google token' });
+    }
+
+    const catalystApp = catalyst.initialize(req);
+    const zcql = catalystApp.zcql();
+
+    // Check if user exists
+    const existing = await zcql.executeZCQLQuery(
+      `SELECT ROWID, Name, Email, Phone, Role FROM Users WHERE Email = '${email}'`
+    );
+
+    if (existing.length > 0) {
+      const userData = existing[0].Users;
+      return res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        user: {
+          ROWID: userData.ROWID,
+          Name: userData.Name,
+          Email: userData.Email,
+          Phone: userData.Phone || '',
+          Role: userData.Role
+        }
+      });
+    }
+
+    // Create new user (no password needed for Google users)
+    const datastore = catalystApp.datastore();
+    const usersTable = datastore.table('Users');
+    const newUser = await usersTable.insertRow({
+      Name: name || email.split('@')[0],
+      Email: email,
+      Phone: '',
+      Password_Hash: 'GOOGLE_AUTH',
+      Role: 'Customer'
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Account created via Google',
+      user: {
+        ROWID: newUser.ROWID,
+        Name: name || email.split('@')[0],
+        Email: email,
+        Phone: '',
+        Role: 'Customer'
+      }
+    });
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(500).json({ success: false, message: 'Google authentication failed' });
+  }
+});
+
 // ─── POST /signup — Create a new user with hashed password ───
 app.post('/signup', async (req, res) => {
   try {

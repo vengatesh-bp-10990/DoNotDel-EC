@@ -62,6 +62,18 @@ function AppProvider({ children }) {
     return data;
   }, [loginUser]);
 
+  const googleSignIn = useCallback(async (credential) => {
+    const res = await fetch(`${API_BASE}/google-auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Google sign-in failed');
+    loginUser(data.user);
+    return data;
+  }, [loginUser]);
+
   /* ─── Cart State ─── */
   const [cartItems, setCartItems] = useState(() => {
     try {
@@ -129,6 +141,7 @@ function AppProvider({ children }) {
         logoutUser,
         signupUser,
         loginWithCredentials,
+        googleSignIn,
         // Auth Modal
         showAuthModal,
         openAuthModal,

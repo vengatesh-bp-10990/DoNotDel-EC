@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
+const GOOGLE_CLIENT_ID = '492564361626-u3tpqrrq76k2h3kpo2e74m18cqs7ggri.apps.googleusercontent.com';
+
 function Signup() {
-  const { signupUser, loginWithCredentials, isAuthenticated } = useApp();
+  const { signupUser, loginWithCredentials, googleSignIn, isAuthenticated } = useApp();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
@@ -247,8 +249,25 @@ function Signup() {
             <button
               type="button"
               onClick={() => {
-                if (window.catalyst && window.catalyst.auth) {
-                  window.catalyst.auth.signIn('googleSignupDiv', { service_url: '/app/' });
+                if (window.google && window.google.accounts) {
+                  window.google.accounts.id.initialize({
+                    client_id: GOOGLE_CLIENT_ID,
+                    callback: async (response) => {
+                      try {
+                        setLoading(true);
+                        setError('');
+                        await googleSignIn(response.credential);
+                        navigate('/', { replace: true });
+                      } catch (err) {
+                        setError(err.message || 'Google sign-in failed');
+                      } finally {
+                        setLoading(false);
+                      }
+                    },
+                  });
+                  window.google.accounts.id.prompt();
+                } else {
+                  setError('Google sign-in is loading. Please try again.');
                 }
               }}
               className="w-full py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-sm font-medium text-gray-700 flex items-center justify-center gap-2.5"
@@ -261,7 +280,6 @@ function Signup() {
               </svg>
               Continue with Google
             </button>
-            <div id="googleSignupDiv" className="hidden"></div>
           </form>
 
           {/* Switch to Login */}
