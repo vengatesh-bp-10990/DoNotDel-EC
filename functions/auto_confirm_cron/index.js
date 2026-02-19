@@ -68,7 +68,7 @@ module.exports = async (cronDetails, context) => {
   try {
     // Get all Pending orders
     const pendingRes = await zcql.executeZCQLQuery(
-      `SELECT ROWID, User_ID, Total, CREATEDTIME FROM Orders WHERE Status = 'Pending'`
+      `SELECT ROWID, User_ID, Total_Amount, CREATEDTIME FROM Orders WHERE Status = 'Pending'`
     );
     const pendingOrders = pendingRes.map(r => r.Orders);
 
@@ -101,7 +101,7 @@ module.exports = async (cronDetails, context) => {
           );
           if (userRes.length > 0) {
             const user = userRes[0].Users;
-            const html = statusUpdateEmail(user.Name, orderId, 'Confirmed', order.Total);
+            const html = statusUpdateEmail(user.Name, orderId, 'Confirmed', order.Total_Amount);
             await sendEmail(catalystApp, user.Email, `Order #${orderId} Auto-Confirmed - ${STORE_NAME}`, html);
           }
         } catch (emailErr) {
