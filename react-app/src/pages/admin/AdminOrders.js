@@ -5,6 +5,36 @@ import { useAdminNotifications } from '../../components/AdminLayout';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
+function DownloadInvoiceBtn({ orderId }) {
+  const [loading, setLoading] = React.useState(false);
+  const handleDownload = async (e) => {
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/invoice/${orderId}`);
+      if (!res.ok) throw new Error('Failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `Invoice-${orderId}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) { alert('Failed to download invoice.'); }
+    setLoading(false);
+  };
+  return (
+    <button onClick={handleDownload} disabled={loading}
+      className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3 py-2 rounded-lg transition-all shadow-sm disabled:opacity-50">
+      {loading ? (
+        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+      ) : (
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+      )}
+      {loading ? 'Generating...' : 'Invoice PDF'}
+    </button>
+  );
+}
+
 const STATUS_OPTIONS = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
 const STATUS_COLORS = {
   Pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
@@ -298,9 +328,11 @@ function AdminOrders() {
                       )}
                     </div>
 
-                    {/* Status Update */}
+                    {/* Download Invoice + Status Update */}
                     <div className="px-4 sm:px-5 pb-5">
-                      <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
+                      <div className="flex items-center gap-3 pt-3 border-t border-gray-200 flex-wrap">
+                        <DownloadInvoiceBtn orderId={o.ROWID} />
+                        <div className="w-px h-6 bg-gray-200 hidden sm:block" />
                         <label className="text-sm font-medium text-gray-700">Update Status:</label>
                         <select value={status}
                           onChange={(e) => updateStatus(o.ROWID, e.target.value)}
