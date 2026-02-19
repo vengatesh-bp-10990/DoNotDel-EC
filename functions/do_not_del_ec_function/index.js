@@ -181,9 +181,30 @@ app.get('/order/:orderId', async (req, res) => {
 app.get('/admin/orders', async (req, res) => {
   try {
     const catalystApp = initCatalyst(req);
-    const data = await catalystApp.zcql().executeZCQLQuery('SELECT * FROM Orders ORDER BY CREATEDTIME DESC');
-    res.json({ success: true, data });
-  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+    const zcql = catalystApp.zcql();
+    const orderRows = await zcql.executeZCQLQuery('SELECT * FROM Orders ORDER BY CREATEDTIME DESC');
+    // Fetch all users to map User_ID → user details
+    const userRows = await zcql.executeZCQLQuery('SELECT ROWID, Name, Email, Phone FROM Users');
+    const userMap = {};
+    userRows.forEach(r => { const u = r.Users || r; userMap[u.ROWID] = u; });
+    // Fetch all products to map id → product details (image etc)
+    const prodRows = await zcql.executeZCQLQuery('SELECT ROWID, Name, Image_URL, Price, Stock FROM Products');
+    const prodMap = {};
+    prodRows.forEach(r => { const p = r.Products || r; prodMap[p.ROWID] = p; });
+    // Enrich orders
+    const enriched = orderRows.map(row => {
+      const o = row.Orders || row;
+      const customer = userMap[o.User_ID] || {};
+      let items = [];
+      try { items = JSON.parse(o.Items || '[]'); } catch {}
+      const enrichedItems = items.map(item => {
+        const prod = prodMap[item.id] || {};
+        return { ...item, image: item.image || prod.Image_URL || '', productName: prod.Name || item.name, availableStock: parseInt(prod.Stock || 0) };
+      });
+      return { ...o, customerName: customer.Name || '', customerEmail: customer.Email || '', customerPhone: customer.Phone || '', enrichedItems };
+    });
+    res.json({ success: true, data: enriched });
+  } catch (error) { console.error('Admin orders error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
 // ─── PUT /admin/order-status ───
@@ -195,6 +216,18 @@ app.put('/admin/order-status', async (req, res) => {
     await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Status: status });
     res.json({ success: true, message: 'Status updated' });
   } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── PUT /admin/order-items ── update item quantities & recalc total ───
+app.put('/admin/order-items', async (req, res) => {
+  try {
+    const { orderId, items } = req.body;
+    if (!orderId || !items) return res.status(400).json({ success: false, message: 'orderId, items required' });
+    const newTotal = items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * (item.qty || 1)), 0);
+    const catalystApp = initCatalyst(req);
+    await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Items: JSON.stringify(items), Total_Amount: newTotal });
+    res.json({ success: true, message: 'Order items updated', total: newTotal });
+  } catch (error) { console.error('Update order items error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
 // ──────── CATEGORY CRUD ────────

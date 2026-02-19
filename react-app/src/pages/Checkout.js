@@ -88,19 +88,79 @@ function Checkout() {
   // Step 3: Order confirmed
   if (step === 3) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[65vh] px-4">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-10 text-center max-w-lg">
-          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
-            <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 py-10">
+        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8 sm:p-12 text-center max-w-lg w-full relative overflow-hidden">
+          {/* Confetti-like top accent */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500" />
+
+          {/* Animated check icon */}
+          <div className="relative mx-auto mb-6 w-24 h-24">
+            <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-20" />
+            <div className="relative w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-200">
+              <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+            </div>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Confirmed!</h2>
-          <p className="text-gray-500 mb-1">Your order has been placed successfully.</p>
-          {orderId && <p className="text-sm text-amber-600 font-medium mb-4">Order ID: #{orderId}</p>}
-          <p className="text-sm text-gray-400 mb-6">Payment: Cash on Delivery</p>
-          <div className="flex gap-3 justify-center">
-            <Link to="/orders" className="bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2.5 px-6 rounded-xl transition-all text-sm">View Orders</Link>
-            <Link to="/" className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 px-6 rounded-xl transition-all text-sm">Continue Shopping</Link>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-2">Order Placed Successfully!</h2>
+          <p className="text-gray-500 mb-1">Thank you for your order. We'll start preparing it right away.</p>
+          {orderId && (
+            <div className="inline-block bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 mt-3 mb-4">
+              <p className="text-sm font-semibold text-amber-700">Order ID: <span className="font-mono">#{orderId}</span></p>
+            </div>
+          )}
+          <p className="text-sm text-gray-400 mb-6">Payment Method: Cash on Delivery</p>
+
+          {/* Quick summary */}
+          <div className="bg-gray-50 rounded-2xl p-5 mb-6 text-left">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">What's Next?</p>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-7 h-7 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-amber-700 font-bold text-xs">1</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">Order Confirmation</p>
+                  <p className="text-xs text-gray-400">Your order is being reviewed and confirmed</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-blue-700 font-bold text-xs">2</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">Packing & Shipping</p>
+                  <p className="text-xs text-gray-400">We'll carefully pack and ship your items</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-7 h-7 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-emerald-700 font-bold text-xs">3</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">Delivery</p>
+                  <p className="text-xs text-gray-400">Your homemade products arrive at your door!</p>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {/* Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            {orderId && (
+              <Link to={`/order/${orderId}`} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-6 rounded-xl transition-all text-sm inline-flex items-center justify-center gap-2 shadow-md shadow-amber-100">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                Track Your Order
+              </Link>
+            )}
+            <Link to="/" className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-xl transition-all text-sm inline-flex items-center justify-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" /></svg>
+              Continue Shopping
+            </Link>
+          </div>
+
+          <Link to="/orders" className="inline-block mt-4 text-sm text-amber-600 hover:text-amber-700 font-medium hover:underline">
+            View All Orders →
+          </Link>
         </div>
       </div>
     );
