@@ -18,9 +18,8 @@ function Login() {
     try {
       setLoading(true);
       setError('');
-      const data = await googleSignIn(response.credential);
-      const role = data?.user?.Role;
-      navigate(role === 'Admin' ? '/admin' : '/', { replace: true });
+      const result = await googleSignIn(response.credential);
+      navigate(result?.user?.Role === 'Admin' ? '/admin' : '/', { replace: true });
     } catch (err) {
       setError(err.message || 'Google sign-in failed');
     } finally {
@@ -75,9 +74,8 @@ function Login() {
 
     setLoading(true);
     try {
-      const data = await loginWithCredentials({ email: form.email.trim().toLowerCase(), password: form.password });
-      const role = data?.user?.Role;
-      navigate(role === 'Admin' ? '/admin' : '/', { replace: true });
+      const result = await loginWithCredentials({ email: form.email.trim().toLowerCase(), password: form.password });
+      navigate(result?.user?.Role === 'Admin' ? '/admin' : '/', { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
     } finally {

@@ -107,6 +107,7 @@ function AdminProducts() {
           <p className="text-sm text-gray-400 mt-1">{products.length} products</p>
         </div>
         <div className="flex items-center gap-3">
+          <Link to="/admin" className="text-sm font-medium text-amber-600 hover:text-amber-700">← Dashboard</Link>
           <button onClick={openAdd} className="bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2 px-4 rounded-xl text-sm transition-all flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Add Product
