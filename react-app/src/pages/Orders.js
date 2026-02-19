@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
+const STATUS_POLL_INTERVAL = 10000; // 10 seconds
 
 function DownloadInvoiceBtn({ orderId, small }) {
   const [loading, setLoading] = useState(false);
@@ -60,15 +61,45 @@ function Orders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [updatedOrderId, setUpdatedOrderId] = useState(null);
+  const prevStatusMapRef = useRef({});
+  const pollRef = useRef(null);
 
+  const fetchOrders = useCallback(() => {
+    if (!isAuthenticated || !user?.ROWID) return Promise.resolve();
+    return fetch(`${API_BASE}/orders/${user.ROWID}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          const list = data.data || [];
+          // Detect status changes for flash effect
+          list.forEach(order => {
+            const o = order.Orders || order;
+            const prev = prevStatusMapRef.current[o.ROWID];
+            if (prev && prev !== o.Status) {
+              setUpdatedOrderId(o.ROWID);
+              setTimeout(() => setUpdatedOrderId(null), 2500);
+            }
+            prevStatusMapRef.current[o.ROWID] = o.Status;
+          });
+          setOrders(list);
+        }
+      })
+      .catch(console.error);
+  }, [isAuthenticated, user]);
+
+  // Initial load
   useEffect(() => {
     if (!isAuthenticated || !user?.ROWID) { setLoading(false); return; }
-    fetch(`${API_BASE}/orders/${user.ROWID}`)
-      .then(r => r.json())
-      .then(data => { if (data.success) setOrders(data.data || []); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [isAuthenticated, user]);
+    fetchOrders().finally(() => setLoading(false));
+  }, [isAuthenticated, user, fetchOrders]);
+
+  // Poll for status changes
+  useEffect(() => {
+    if (!isAuthenticated || !user?.ROWID) return;
+    pollRef.current = setInterval(fetchOrders, STATUS_POLL_INTERVAL);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [isAuthenticated, user, fetchOrders]);
 
   if (!isAuthenticated) {
     return (
@@ -135,7 +166,7 @@ function Orders() {
             try { items = JSON.parse(o.Items || '[]'); } catch {}
             return (
               <Link key={o.ROWID} to={`/order/${o.ROWID}`}
-                className="block bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg hover:border-gray-200 transition-all p-5">
+                className={`block bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg hover:border-gray-200 transition-all duration-500 p-5 ${updatedOrderId === o.ROWID ? 'ring-4 ring-amber-300 scale-[1.01] shadow-lg' : ''}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="text-sm font-bold text-gray-800">Order #{o.ROWID}</p>

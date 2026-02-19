@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
+const STATUS_POLL_INTERVAL = 8000; // 8 seconds
 
 function DownloadInvoiceBtn({ orderId }) {
   const [loading, setLoading] = useState(false);
@@ -40,6 +41,30 @@ function DownloadInvoiceBtn({ orderId }) {
   );
 }
 
+// ─── Status Update Toast ───
+function StatusToast({ message, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+  return (
+    <div className="fixed top-6 right-6 z-50 animate-bounce-in">
+      <div className="bg-amber-600 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 max-w-sm">
+        <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+        </div>
+        <div>
+          <p className="font-semibold text-sm">Status Updated!</p>
+          <p className="text-xs text-amber-100">{message}</p>
+        </div>
+        <button onClick={onClose} className="ml-2 text-amber-200 hover:text-white">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const STEPS = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered'];
 
 function OrderTracking() {
@@ -47,15 +72,47 @@ function OrderTracking() {
   const { isAuthenticated, openAuthModal } = useApp();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statusFlash, setStatusFlash] = useState(false);
+  const [toastMsg, setToastMsg] = useState(null);
+  const prevStatusRef = useRef(null);
+  const pollRef = useRef(null);
 
+  // Fetch order data
+  const fetchOrder = useCallback(() => {
+    if (!id) return;
+    return fetch(`${API_BASE}/order/${id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          const o = data.data?.Orders || data.data || null;
+          if (o) {
+            const newStatus = o.Status || 'Pending';
+            // Detect status change after initial load
+            if (prevStatusRef.current && prevStatusRef.current !== newStatus) {
+              setStatusFlash(true);
+              setToastMsg(`Order status changed: ${prevStatusRef.current} → ${newStatus}`);
+              setTimeout(() => setStatusFlash(false), 2000);
+            }
+            prevStatusRef.current = newStatus;
+            setOrder(o);
+          }
+        }
+      })
+      .catch(console.error);
+  }, [id]);
+
+  // Initial load
   useEffect(() => {
     if (!id) return;
-    fetch(`${API_BASE}/order/${id}`)
-      .then(r => r.json())
-      .then(data => { if (data.success) setOrder(data.data?.Orders || data.data || null); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [id]);
+    fetchOrder().finally(() => setLoading(false));
+  }, [id, fetchOrder]);
+
+  // Poll for status changes
+  useEffect(() => {
+    if (!id || !isAuthenticated) return;
+    pollRef.current = setInterval(fetchOrder, STATUS_POLL_INTERVAL);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [id, isAuthenticated, fetchOrder]);
 
   if (!isAuthenticated) {
     return (
@@ -95,6 +152,9 @@ function OrderTracking() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      {/* Status Change Toast */}
+      {toastMsg && <StatusToast message={toastMsg} onClose={() => setToastMsg(null)} />}
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
         <Link to="/orders" className="hover:text-amber-600">My Orders</Link>
@@ -103,7 +163,7 @@ function OrderTracking() {
       </div>
 
       {/* Status Timeline */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+      <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6 transition-all duration-500 ${statusFlash ? 'ring-4 ring-amber-300 scale-[1.01]' : ''}`}>
         <h2 className="text-lg font-bold text-gray-800 mb-6">Order Status</h2>
 
         {isCancelled ? (
