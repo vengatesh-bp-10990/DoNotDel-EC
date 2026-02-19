@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-6 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98];
+  }
+  .btn-success {
+    @apply bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98];
+  }
+  .btn-danger {
+    @apply bg-red-500 hover:bg-red-600 text-white font-medium py-1.5 px-4 rounded-lg transition-all duration-200 text-sm active:scale-[0.98];
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-gray-200 transition-all duration-300;
+  }
+}
+
+@keyframes slide-down {
+  0% { opacity: 0; transform: translate(-50%, -16px); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-out;
+}
+
+/* Auth Modal Animations */
+@keyframes modal-backdrop-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes modal-slide-in {
+  0% { opacity: 0; transform: translateY(24px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-modal-backdrop {
+  animation: modal-backdrop-in 0.2s ease-out;
+}
+
+.animate-modal-slide {
+  animation: modal-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─── Catalyst Auth Widget Responsive Fix ─── */
+#loginPageAuthDiv,
+#signupPageAuthDiv,
+#modalAuthDiv {
+  width: 100% !important;
+  min-height: 320px;
+  overflow: hidden;
+}
+
+#loginPageAuthDiv iframe,
+#signupPageAuthDiv iframe,
+#modalAuthDiv iframe {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 320px;
+  border: none !important;
+  overflow: hidden;
+}
+
+@keyframes slide-in-right {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Hide scrollbar for category pills */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
