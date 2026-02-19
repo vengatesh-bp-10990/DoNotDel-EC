@@ -11,6 +11,10 @@ const ADMIN_EMAIL = 'vengi9360@gmail.com';
 const CACHE_SEGMENT_ID = '21282000000050152';
 const PRODUCTS_CACHE_KEY = 'all_products';
 const CACHE_EXPIRY_HOURS = 1;
+const SENDER_EMAIL = 'vengatesh.bp+sample1@zohotest.com';
+const STORE_NAME = 'Homemade Products';
+const STORE_URL = 'https://homemade.onslate.in';
+const AUTO_CONFIRM_MINUTES = 1; // Auto-confirm Pending orders after this many minutes
 
 // Enable Nimbus for Stratus/Cache access
 function initCatalyst(req) {
@@ -42,6 +46,105 @@ async function clearProductsCache(catalystApp) {
     const segment = catalystApp.cache().segment(CACHE_SEGMENT_ID);
     await segment.delete(PRODUCTS_CACHE_KEY);
   } catch (e) { /* key may not exist */ }
+}
+
+// ─── Email Helpers ───
+async function sendEmail(catalystApp, to, subject, htmlContent) {
+  try {
+    await catalystApp.email().sendMail({
+      from_email: SENDER_EMAIL,
+      to_email: to,
+      subject,
+      content: htmlContent,
+      html_mode: true,
+    });
+    console.log(`Email sent to ${to}: ${subject}`);
+  } catch (e) { console.error(`Email send error to ${to}:`, e.message); }
+}
+
+function emailWrapper(body) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#fff;">
+  <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:24px 32px;text-align:center;">
+    <h1 style="margin:0;color:#fff;font-size:22px;">${STORE_NAME}</h1>
+  </div>
+  <div style="padding:32px;">${body}</div>
+  <div style="background:#f9fafb;padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
+    <p style="margin:0;color:#9ca3af;font-size:12px;">© ${new Date().getFullYear()} ${STORE_NAME} • <a href="${STORE_URL}" style="color:#f59e0b;">Visit Store</a></p>
+  </div>
+</div></body></html>`;
+}
+
+function orderPlacedEmail(customerName, orderId, total, items, address, paymentMethod) {
+  const itemsHtml = items.map(i =>
+    `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;">${i.name}</td>
+     <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;text-align:center;font-size:14px;">${i.qty}</td>
+     <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-size:14px;">₹${(parseFloat(i.price||0)*parseInt(i.qty||1)).toFixed(0)}</td></tr>`
+  ).join('');
+  return emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111;">Order Confirmed! 🎉</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px;">Hi ${customerName}, your order has been placed successfully.</p>
+    <div style="background:#f9fafb;border-radius:12px;padding:16px;margin-bottom:24px;">
+      <table style="width:100%;font-size:13px;color:#6b7280;">
+        <tr><td>Order ID</td><td style="text-align:right;font-weight:700;color:#111;">#${orderId}</td></tr>
+        <tr><td>Payment</td><td style="text-align:right;font-weight:600;">${paymentMethod}</td></tr>
+        <tr><td>Shipping To</td><td style="text-align:right;font-weight:600;">${address.substring(0,50)}${address.length>50?'...':''}</td></tr>
+      </table>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+      <tr style="border-bottom:2px solid #e5e7eb;"><th style="text-align:left;padding:8px 0;font-size:12px;color:#9ca3af;">ITEM</th><th style="text-align:center;padding:8px 0;font-size:12px;color:#9ca3af;">QTY</th><th style="text-align:right;padding:8px 0;font-size:12px;color:#9ca3af;">PRICE</th></tr>
+      ${itemsHtml}
+    </table>
+    <div style="text-align:right;font-size:18px;font-weight:800;color:#059669;margin-bottom:24px;">Total: ₹${parseFloat(total).toFixed(0)}</div>
+    <div style="text-align:center;">
+      <a href="${STORE_URL}/order/${orderId}" style="display:inline-block;background:#f59e0b;color:#fff;padding:12px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Track Your Order →</a>
+    </div>
+  `);
+}
+
+function statusUpdateEmail(customerName, orderId, newStatus, total) {
+  const statusEmoji = { Confirmed:'✅', Processing:'⚙️', Shipped:'🚚', Delivered:'📦', Cancelled:'❌' };
+  const statusMsg = {
+    Confirmed: 'Your order has been confirmed and is being prepared.',
+    Processing: 'Your order is being processed and will ship soon.',
+    Shipped: 'Your order has been shipped! It\'s on the way.',
+    Delivered: 'Your order has been delivered! Enjoy your purchase. 🎉',
+    Cancelled: 'Your order has been cancelled. If you have questions, please contact us.',
+  };
+  return emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111;">${statusEmoji[newStatus]||'📋'} Order Status Updated</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px;">Hi ${customerName}, here's an update on your order.</p>
+    <div style="background:#f9fafb;border-radius:12px;padding:20px;margin-bottom:24px;text-align:center;">
+      <p style="margin:0 0 8px;font-size:13px;color:#9ca3af;">Order #${orderId}</p>
+      <div style="display:inline-block;background:${newStatus==='Cancelled'?'#fef2f2':'#ecfdf5'};color:${newStatus==='Cancelled'?'#dc2626':'#059669'};padding:8px 24px;border-radius:999px;font-size:16px;font-weight:700;">
+        ${newStatus}
+      </div>
+      <p style="margin:12px 0 0;color:#6b7280;font-size:14px;">${statusMsg[newStatus]||'Your order status has been updated.'}</p>
+    </div>
+    <div style="text-align:center;">
+      <a href="${STORE_URL}/order/${orderId}" style="display:inline-block;background:#f59e0b;color:#fff;padding:12px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View Order Details →</a>
+    </div>
+  `);
+}
+
+function newProductEmail(customerName, product) {
+  return emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111;">🆕 New Product Alert!</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px;">Hi ${customerName}, we just added something new you might love!</p>
+    <div style="border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;margin-bottom:24px;">
+      ${product.Image_URL ? `<img src="${product.Image_URL}" alt="${product.Name}" style="width:100%;height:200px;object-fit:cover;">` : ''}
+      <div style="padding:20px;">
+        <h3 style="margin:0 0 4px;font-size:18px;color:#111;">${product.Name}</h3>
+        <p style="margin:0 0 8px;color:#9ca3af;font-size:12px;">${product.Category || ''}</p>
+        <p style="margin:0 0 12px;color:#6b7280;font-size:14px;line-height:1.5;">${(product.Description||'').substring(0,120)}${(product.Description||'').length>120?'...':''}</p>
+        <div style="font-size:22px;font-weight:800;color:#059669;">₹${parseFloat(product.Price||0).toFixed(0)}</div>
+      </div>
+    </div>
+    <div style="text-align:center;">
+      <a href="${STORE_URL}" style="display:inline-block;background:#f59e0b;color:#fff;padding:12px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Shop Now →</a>
+    </div>
+  `);
 }
 
 // ─── POST /google-auth ───
@@ -153,6 +256,17 @@ app.post('/orders', async (req, res) => {
       Payment_Method: Payment_Method || 'COD'
     });
     res.status(201).json({ success: true, message: 'Order placed!', data: newOrder });
+
+    // Send order confirmation email (non-blocking)
+    try {
+      const userRes = await catalystApp.zcql().executeZCQLQuery(`SELECT Name, Email FROM Users WHERE ROWID = '${User_ID}'`);
+      if (userRes.length > 0) {
+        const user = userRes[0].Users;
+        const items = Items || [];
+        const html = orderPlacedEmail(user.Name, newOrder.ROWID, Total_Amount, items, Shipping_Address, Payment_Method || 'COD');
+        sendEmail(catalystApp, user.Email, `Order #${newOrder.ROWID} Placed - ${STORE_NAME}`, html);
+      }
+    } catch (emailErr) { console.error('Order email error:', emailErr.message); }
   } catch (error) { console.error('Order error:', error); res.status(500).json({ success: false, message: error.message || 'Failed to create order' }); }
 });
 
@@ -299,6 +413,20 @@ app.put('/admin/order-status', async (req, res) => {
     const catalystApp = initCatalyst(req);
     await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Status: status });
     res.json({ success: true, message: 'Status updated' });
+
+    // Send status update email (non-blocking)
+    try {
+      const orderRes = await catalystApp.zcql().executeZCQLQuery(`SELECT User_ID, Total_Amount FROM Orders WHERE ROWID = '${orderId}'`);
+      if (orderRes.length > 0) {
+        const order = orderRes[0].Orders;
+        const userRes = await catalystApp.zcql().executeZCQLQuery(`SELECT Name, Email FROM Users WHERE ROWID = '${order.User_ID}'`);
+        if (userRes.length > 0) {
+          const user = userRes[0].Users;
+          const html = statusUpdateEmail(user.Name, orderId, status, order.Total_Amount);
+          sendEmail(catalystApp, user.Email, `Order #${orderId} ${status} - ${STORE_NAME}`, html);
+        }
+      }
+    } catch (emailErr) { console.error('Status email error:', emailErr.message); }
   } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
@@ -393,6 +521,17 @@ app.post('/admin/product', async (req, res) => {
     const p = await catalystApp.datastore().table('Products').insertRow({ Name, Description: Description || '', Price, Category, Image_URL: Image_URL || '', Stock_Quantity: Stock_Quantity || 0 });
     await clearProductsCache(catalystApp);
     res.status(201).json({ success: true, data: p });
+
+    // Send new product email to ALL users (non-blocking)
+    try {
+      const allUsers = await catalystApp.zcql().executeZCQLQuery('SELECT Name, Email FROM Users');
+      const product = { Name, Description, Price, Category, Image_URL };
+      for (const row of allUsers) {
+        const u = row.Users;
+        const html = newProductEmail(u.Name, product);
+        sendEmail(catalystApp, u.Email, `🆕 New Product: ${Name} - ${STORE_NAME}`, html);
+      }
+    } catch (emailErr) { console.error('New product email error:', emailErr.message); }
   } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
 });
 

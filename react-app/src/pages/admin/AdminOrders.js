@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useAdminNotifications } from '../../components/AdminLayout';
@@ -44,6 +44,57 @@ const STATUS_COLORS = {
   Delivered: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   Cancelled: 'bg-red-100 text-red-700 border-red-200',
 };
+
+const AUTO_CONFIRM_MINUTES = 1;
+
+function AutoConfirmCountdown({ createdTime, onExpired }) {
+  const [remaining, setRemaining] = useState(null);
+  const expiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!createdTime) return;
+    const expiry = new Date(createdTime).getTime() + AUTO_CONFIRM_MINUTES * 60 * 1000;
+    function tick() {
+      const diff = Math.max(0, expiry - Date.now());
+      setRemaining(diff);
+      if (diff <= 0 && !expiredRef.current) {
+        expiredRef.current = true;
+        if (onExpired) onExpired();
+      }
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [createdTime, onExpired]);
+
+  if (remaining === null) return null;
+  if (remaining <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full animate-pulse">
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+        Auto-confirming…
+      </span>
+    );
+  }
+  const secs = Math.ceil(remaining / 1000);
+  const mins = Math.floor(secs / 60);
+  const s = secs % 60;
+  const pct = Math.min(100, ((AUTO_CONFIRM_MINUTES * 60 * 1000 - remaining) / (AUTO_CONFIRM_MINUTES * 60 * 1000)) * 100);
+  const isUrgent = secs <= 15;
+
+  return (
+    <div className="inline-flex items-center gap-2">
+      <div className="relative w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+        <div className={`absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ${isUrgent ? 'bg-red-500' : 'bg-amber-500'}`}
+          style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-xs font-bold tabular-nums ${isUrgent ? 'text-red-600 animate-pulse' : 'text-amber-600'}`}>
+        {mins}:{s.toString().padStart(2, '0')}
+      </span>
+      <span className="text-[10px] text-gray-400">auto-confirm</span>
+    </div>
+  );
+}
 
 function AdminOrders() {
   const { user, isAuthenticated } = useApp();
@@ -215,6 +266,9 @@ function AdminOrders() {
                     <div className="flex items-center gap-3 flex-shrink-0">
                       <span className="text-sm font-bold text-gray-800">₹{parseFloat(o.Total_Amount || 0).toFixed(0)}</span>
                       <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>{status}</span>
+                      {status === 'Pending' && o.CREATEDTIME && (
+                        <AutoConfirmCountdown createdTime={o.CREATEDTIME} onExpired={fetchOrders} />
+                      )}
                       <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">{items.length} items</span>
                       <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </div>

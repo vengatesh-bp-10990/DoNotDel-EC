@@ -1,7 +1,8 @@
 {
   "functions": {
     "targets": [
-      "do_not_del_ec_function"
+      "do_not_del_ec_function",
+      "auto_confirm_cron"
     ],
     "ignore": [],
     "source": "functions"
