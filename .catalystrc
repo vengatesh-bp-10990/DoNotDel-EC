@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "project": 1,
+    "env": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "21282000000043055",
+      "name": "DoNotDel-EC",
+      "domain": {
+        "id": "50039032514",
+        "name": "donotdel-ec-60047179487.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60047179487",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+	"name": "do_not_del_ec_function",
+	"version": "1.0.0",
+	"main": "index.js",
+	"author": "vengatesh.bp@zohocorp.com",
+	"dependencies": {
+		"bcryptjs": "^3.0.3",
+		"cors": "^2.8.6",
+		"express": "^5.2.1",
+		"zcatalyst-sdk-node": "^3.2.0"
+	}
+}

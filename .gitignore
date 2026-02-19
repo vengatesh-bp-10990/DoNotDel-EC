@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+react-app/node_modules/
+functions/do_not_del_ec_function/node_modules/
+
+# Build output
+react-app/build/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Catalyst
+.catalyst
+.zcatalyst
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+coverage/
