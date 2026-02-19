@@ -9,10 +9,11 @@ const SORT_OPTIONS = [
 ];
 
 const BANNERS = [
-  { title: 'Pure Cold-Pressed Oils', subtitle: 'From our farm to your kitchen — 100% natural, chemical-free', bg: 'from-amber-600 via-orange-500 to-red-500', cta: 'Shop Oils' },
-  { title: 'Handwoven Silk Sarees', subtitle: 'Traditional Kanchipuram & handloom sarees crafted with love', bg: 'from-pink-600 via-rose-500 to-amber-500', cta: 'Shop Sarees' },
-  { title: 'Herbal Hair Care', subtitle: 'Nourish your hair with age-old recipes — Bhringraj, Amla & more', bg: 'from-emerald-600 via-teal-500 to-cyan-500', cta: 'Shop Hair Oils' },
-  { title: 'Comfy Cotton Nightwear', subtitle: 'Sleep in luxury — soft cotton & silk nightwear for women', bg: 'from-indigo-600 via-purple-500 to-pink-500', cta: 'Shop Nightwear' },
+  { title: 'Pure Cold-Pressed Oils', subtitle: 'Coconut, Groundnut, Gingelly & Castor — 100% natural, chemical-free', bg: 'from-amber-600 via-orange-500 to-red-500', cta: 'Shop Oils' },
+  { title: 'Homemade Pure Ghee', subtitle: 'Farm-fresh cow & buffalo ghee, hand-churned with love', bg: 'from-yellow-600 via-amber-500 to-orange-500', cta: 'Shop Ghees' },
+  { title: 'Kanchipuram Pattu Sarees', subtitle: 'Handwoven silk sarees with intricate zari — timeless elegance', bg: 'from-pink-600 via-rose-500 to-amber-500', cta: 'Shop Pattu Sarees' },
+  { title: 'Comfy Nightwear for Women', subtitle: 'Cotton nighties, pants & t-shirts — sleep in comfort', bg: 'from-indigo-600 via-purple-500 to-pink-500', cta: 'Shop Night Wears' },
+  { title: 'Farm-Fresh Coconuts', subtitle: 'Fresh peeled & unpeeled coconuts — perfect for cooking & pooja', bg: 'from-emerald-600 via-teal-500 to-cyan-500', cta: 'Shop Coconuts' },
 ];
 
 function Home() {

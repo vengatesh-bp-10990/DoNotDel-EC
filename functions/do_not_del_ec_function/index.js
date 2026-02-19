@@ -153,7 +153,7 @@ app.post('/orders', async (req, res) => {
       Payment_Method: Payment_Method || 'COD'
     });
     res.status(201).json({ success: true, message: 'Order placed!', data: newOrder });
-  } catch (error) { console.error('Order error:', error); res.status(500).json({ success: false, message: 'Failed to create order' }); }
+  } catch (error) { console.error('Order error:', error); res.status(500).json({ success: false, message: error.message || 'Failed to create order' }); }
 });
 
 // ─── GET /orders/:userId ───
@@ -188,7 +188,7 @@ app.get('/admin/orders', async (req, res) => {
     const userMap = {};
     userRows.forEach(r => { const u = r.Users || r; userMap[u.ROWID] = u; });
     // Fetch all products to map id → product details (image etc)
-    const prodRows = await zcql.executeZCQLQuery('SELECT ROWID, Name, Image_URL, Price, Stock FROM Products');
+    const prodRows = await zcql.executeZCQLQuery('SELECT ROWID, Name, Image_URL, Price, Stock_Quantity FROM Products');
     const prodMap = {};
     prodRows.forEach(r => { const p = r.Products || r; prodMap[p.ROWID] = p; });
     // Enrich orders
@@ -199,12 +199,12 @@ app.get('/admin/orders', async (req, res) => {
       try { items = JSON.parse(o.Items || '[]'); } catch {}
       const enrichedItems = items.map(item => {
         const prod = prodMap[item.id] || {};
-        return { ...item, image: item.image || prod.Image_URL || '', productName: prod.Name || item.name, availableStock: parseInt(prod.Stock || 0) };
+        return { ...item, image: item.image || prod.Image_URL || '', productName: prod.Name || item.name, availableStock: parseInt(prod.Stock_Quantity || 0) };
       });
       return { ...o, customerName: customer.Name || '', customerEmail: customer.Email || '', customerPhone: customer.Phone || '', enrichedItems };
     });
     res.json({ success: true, data: enriched });
-  } catch (error) { console.error('Admin orders error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
+  } catch (error) { console.error('Admin orders error:', error); res.status(500).json({ success: false, message: error.message || 'Failed' }); }
 });
 
 // ─── PUT /admin/order-status ───
@@ -375,49 +375,119 @@ app.get('/cache-test', async (req, res) => {
 
 // ─── GET /migrate-images ─── (one-time: update coconut oil images to Stratus URL)
 app.get('/migrate-images', async (req, res) => {
+  res.json({ success: true, message: 'Deprecated. Use /seed instead.' });
+});
+
+// ─── POST /seed/reset ─── Clear ALL old data and re-seed categories + products
+app.post('/seed/reset', async (req, res) => {
   try {
     const catalystApp = initCatalyst(req);
     const zcql = catalystApp.zcql();
-    const allProducts = await zcql.executeZCQLQuery("SELECT ROWID, Name, Image_URL FROM Products");
-    const table = catalystApp.datastore().table('Products');
-    const stratusUrl = 'https://ecom-imgs-development.zohostratus.in/product_imgs/C-oil.webp';
-    let updated = 0;
-    const details = [];
-    for (const row of allProducts) {
-      const p = row.Products;
-      if (p.Name && p.Name.toLowerCase().includes('coconut')) {
-        await table.updateRow({ ROWID: p.ROWID, Image_URL: stratusUrl });
-        updated++;
-        details.push({ ROWID: p.ROWID, Name: p.Name });
+    const ds = catalystApp.datastore();
+    const log = [];
+
+    // 1. Delete all old orders
+    try {
+      const rows = await zcql.executeZCQLQuery('SELECT ROWID FROM Orders');
+      if (rows.length > 0) {
+        const ids = rows.map(r => (r.Orders || r).ROWID);
+        for (const id of ids) await ds.table('Orders').deleteRow(id);
       }
-    }
+      log.push(`Deleted ${rows.length} orders`);
+    } catch (e) { log.push('Orders delete: ' + e.message); }
+
+    // 2. Delete all cart items
+    try {
+      const rows = await zcql.executeZCQLQuery('SELECT ROWID FROM Cart');
+      if (rows.length > 0) {
+        const ids = rows.map(r => (r.Cart || r).ROWID);
+        for (const id of ids) await ds.table('Cart').deleteRow(id);
+      }
+      log.push(`Deleted ${rows.length} cart items`);
+    } catch (e) { log.push('Cart delete: ' + e.message); }
+
+    // 3. Delete all old products
+    try {
+      const rows = await zcql.executeZCQLQuery('SELECT ROWID FROM Products');
+      if (rows.length > 0) {
+        const ids = rows.map(r => (r.Products || r).ROWID);
+        for (const id of ids) await ds.table('Products').deleteRow(id);
+      }
+      log.push(`Deleted ${rows.length} products`);
+    } catch (e) { log.push('Products delete: ' + e.message); }
+
+    // 4. Delete all old categories
+    try {
+      const rows = await zcql.executeZCQLQuery('SELECT ROWID FROM Categories');
+      if (rows.length > 0) {
+        const ids = rows.map(r => (r.Categories || r).ROWID);
+        for (const id of ids) await ds.table('Categories').deleteRow(id);
+      }
+      log.push(`Deleted ${rows.length} categories`);
+    } catch (e) { log.push('Categories delete: ' + e.message); }
+
+    // 5. Seed new categories
+    const categories = [
+      { Category_Name: 'Oils', Description: 'Pure cold-pressed & traditional cooking oils', Image_URL: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=600' },
+      { Category_Name: 'Ghees', Description: 'Homemade pure ghee from farm-fresh milk', Image_URL: 'https://images.unsplash.com/photo-1631963637200-f571aa6c1305?w=600' },
+      { Category_Name: 'Pattu Sarees', Description: 'Handwoven Kanchipuram silk sarees', Image_URL: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=600' },
+      { Category_Name: 'Night Wears', Description: 'Comfortable nightwear for women', Image_URL: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600' },
+      { Category_Name: 'Coconuts', Description: 'Fresh coconuts & unpeeled coconuts', Image_URL: 'https://images.unsplash.com/photo-1550828520-4cb496926fc9?w=600' },
+    ];
+    const catTable = ds.table('Categories');
+    for (const c of categories) await catTable.insertRow(c);
+    log.push(`Seeded ${categories.length} categories`);
+
+    // 6. Seed new products
+    const products = [
+      // Oils
+      { Name: 'Cold-Pressed Coconut Oil', Description: 'Pure cold-pressed coconut oil from fresh Kerala coconuts. Chemical-free, retains natural nutrients.', Price: 350, Category: 'Oils', Image_URL: 'https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=600', Stock_Quantity: 50 },
+      { Name: 'Groundnut Oil', Description: 'Farm-fresh cold-pressed groundnut oil for traditional South Indian cooking.', Price: 320, Category: 'Oils', Image_URL: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=600', Stock_Quantity: 45 },
+      { Name: 'Gingelly Oil (Sesame Oil)', Description: 'Pure gingelly oil, perfect for pickles, seasoning & traditional cooking.', Price: 380, Category: 'Oils', Image_URL: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600', Stock_Quantity: 40 },
+      { Name: 'Castor Oil', Description: 'Cold-pressed castor oil for hair care, skin care & medicinal use.', Price: 280, Category: 'Oils', Image_URL: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600', Stock_Quantity: 35 },
+
+      // Ghees
+      { Name: 'Homemade Pure Cow Ghee', Description: 'Traditional homemade ghee from pure cow milk. Rich aroma & golden color.', Price: 650, Category: 'Ghees', Image_URL: 'https://images.unsplash.com/photo-1631963637200-f571aa6c1305?w=600', Stock_Quantity: 25 },
+      { Name: 'Homemade Buffalo Ghee', Description: 'Premium buffalo ghee, hand-churned for authentic taste. Perfect for sweets & cooking.', Price: 550, Category: 'Ghees', Image_URL: 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=600', Stock_Quantity: 20 },
+
+      // Pattu Sarees
+      { Name: 'Kanchipuram Pattu Saree - Maroon', Description: 'Authentic Kanchipuram silk saree with gold zari border. Handwoven by master weavers.', Price: 4500, Category: 'Pattu Sarees', Image_URL: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=600', Stock_Quantity: 10 },
+      { Name: 'Kanchipuram Pattu Saree - Royal Blue', Description: 'Elegant royal blue Kanchipuram silk with intricate temple border design.', Price: 5200, Category: 'Pattu Sarees', Image_URL: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=600', Stock_Quantity: 8 },
+      { Name: 'Kanchipuram Pattu Saree - Green Gold', Description: 'Traditional green & gold Kanchipuram silk saree. Wedding collection.', Price: 6000, Category: 'Pattu Sarees', Image_URL: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?w=600', Stock_Quantity: 5 },
+
+      // Night Wears
+      { Name: 'Cotton Nighty', Description: 'Soft breathable cotton nighty for comfortable sleep. Floral print.', Price: 499, Category: 'Night Wears', Image_URL: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600', Stock_Quantity: 50 },
+      { Name: 'Night Pant for Women', Description: 'Comfortable cotton night pant with elastic waist. Multiple colors available.', Price: 399, Category: 'Night Wears', Image_URL: 'https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=600', Stock_Quantity: 40 },
+      { Name: 'Night T-Shirt for Women', Description: 'Soft cotton night t-shirt with cute prints. Relaxed fit.', Price: 349, Category: 'Night Wears', Image_URL: 'https://images.unsplash.com/photo-1521577352947-9bb58764b69a?w=600', Stock_Quantity: 45 },
+
+      // Coconuts
+      { Name: 'Fresh Coconut', Description: 'Farm-fresh coconuts, perfect for cooking & making coconut milk.', Price: 45, Category: 'Coconuts', Image_URL: 'https://images.unsplash.com/photo-1550828520-4cb496926fc9?w=600', Stock_Quantity: 100 },
+      { Name: 'Unpeeled Coconut (With Husk)', Description: 'Whole unpeeled coconuts with coir husk. Ideal for pooja & traditional use.', Price: 35, Category: 'Coconuts', Image_URL: 'https://images.unsplash.com/photo-1580984969071-a8da8c4e4c56?w=600', Stock_Quantity: 80 },
+    ];
+    const prodTable = ds.table('Products');
+    for (const p of products) await prodTable.insertRow(p);
+    log.push(`Seeded ${products.length} products`);
+
+    // 7. Clear products cache
     await clearProductsCache(catalystApp);
-    res.json({ success: true, message: `Updated ${updated} coconut product(s)`, details, totalProducts: allProducts.length });
-  } catch (error) { console.error('Migrate images error:', error); res.status(500).json({ success: false, message: 'Migration failed', error: error.message }); }
+    log.push('Cleared products cache');
+
+    res.json({ success: true, log });
+  } catch (error) { console.error('Seed reset error:', error); res.status(500).json({ success: false, message: error.message }); }
 });
 
-// ─── GET /seed ───
+// ─── GET /seed ─── (legacy, now redirects to reset)
 app.get('/seed', async (req, res) => {
+  res.json({ success: false, message: 'Use POST /seed/reset instead to clear old data and seed fresh.' });
+});
+
+// ─── DEBUG: Get table columns ───
+app.get('/debug/columns/:table', async (req, res) => {
   try {
-    const products = [
-      { Name: 'Cold-Pressed Coconut Oil', Description: 'Pure cold-pressed coconut oil from fresh Kerala coconuts.', Price: 250, Category: 'Coconut Products', Image_URL: 'https://ecom-imgs-development.zohostratus.in/product_imgs/C-oil.webp', Stock_Quantity: 50 },
-      { Name: 'Virgin Coconut Oil', Description: 'Premium virgin coconut oil, perfect for skin & cooking.', Price: 450, Category: 'Coconut Products', Image_URL: 'https://ecom-imgs-development.zohostratus.in/product_imgs/C-oil.webp', Stock_Quantity: 30 },
-      { Name: 'Herbal Hair Oil', Description: 'Traditional hair oil with bhringraj, amla & coconut.', Price: 350, Category: 'Hair Oils', Image_URL: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600', Stock_Quantity: 40 },
-      { Name: 'Curry Leaf Hair Oil', Description: 'Homemade curry leaf infused oil for hair growth.', Price: 299, Category: 'Hair Oils', Image_URL: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?w=600', Stock_Quantity: 35 },
-      { Name: 'Cold-Pressed Groundnut Oil', Description: 'Farm-fresh groundnut oil for traditional cooking.', Price: 320, Category: 'Groundnut Oils', Image_URL: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=600', Stock_Quantity: 45 },
-      { Name: 'Filtered Groundnut Oil', Description: 'Double-filtered pure groundnut oil. No chemicals.', Price: 380, Category: 'Groundnut Oils', Image_URL: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600', Stock_Quantity: 25 },
-      { Name: 'Kanchipuram Silk Saree', Description: 'Handwoven silk saree with intricate zari border.', Price: 2500, Category: 'Sarees', Image_URL: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=600', Stock_Quantity: 15 },
-      { Name: 'Cotton Handloom Saree', Description: 'Soft cotton handloom saree, light and breathable.', Price: 850, Category: 'Sarees', Image_URL: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=600', Stock_Quantity: 20 },
-      { Name: 'Cotton Nightwear Set', Description: 'Comfortable cotton nightwear set for women.', Price: 699, Category: 'Nightwear', Image_URL: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600', Stock_Quantity: 40 },
-      { Name: 'Silk Nightwear Gown', Description: 'Premium silk nightwear gown, soft and luxurious.', Price: 1200, Category: 'Nightwear', Image_URL: 'https://images.unsplash.com/photo-1617331721458-bd3bd3f9c7f8?w=600', Stock_Quantity: 18 },
-    ];
     const catalystApp = initCatalyst(req);
-    const table = catalystApp.datastore().table('Products');
-    const inserted = [];
-    for (const p of products) inserted.push(await table.insertRow(p));
-    await clearProductsCache(catalystApp);
-    res.status(201).json({ success: true, message: 'Seeded 10 products', data: inserted });
-  } catch (error) { res.status(500).json({ success: false, message: 'Seed failed' }); }
+    const cols = await catalystApp.datastore().table(req.params.table).getAllColumns();
+    res.json({ success: true, columns: cols.map(c => ({ name: c.column_name, type: c.data_type })) });
+  } catch (error) { res.json({ success: false, message: error.message }); }
 });
 
 module.exports = app;
