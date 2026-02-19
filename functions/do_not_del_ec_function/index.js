@@ -11,7 +11,7 @@ const ADMIN_EMAIL = 'vengi9360@gmail.com';
 const CACHE_SEGMENT_ID = '21282000000050152';
 const PRODUCTS_CACHE_KEY = 'all_products';
 const CACHE_EXPIRY_HOURS = 1;
-const SENDER_EMAIL = 'vengatesh.bp+sample1@zohotest.com';
+const SENDER_EMAIL = 'vengi9360@gmail.com';
 const STORE_NAME = 'Homemade Products';
 const STORE_URL = 'https://homemade.onslate.in';
 const AUTO_CONFIRM_MINUTES = 1; // Auto-confirm Pending orders after this many minutes
@@ -746,6 +746,27 @@ app.get('/debug/columns/:table', async (req, res) => {
     const cols = await catalystApp.datastore().table(req.params.table).getAllColumns();
     res.json({ success: true, columns: cols.map(c => ({ name: c.column_name, type: c.data_type })) });
   } catch (error) { res.json({ success: false, message: error.message }); }
+});
+
+// ─── DEBUG: Test email ───
+app.get('/debug/test-email', async (req, res) => {
+  try {
+    const catalystApp = initCatalyst(req);
+    const to = req.query.to || SENDER_EMAIL;
+    console.log('Testing email to:', to);
+    const result = await catalystApp.email().sendMail({
+      from_email: SENDER_EMAIL,
+      to_email: to,
+      subject: 'Test Email from Homemade Products',
+      content: '<h1>Test</h1><p>If you see this, email is working!</p>',
+      html_mode: true,
+    });
+    console.log('Email result:', JSON.stringify(result));
+    res.json({ success: true, message: 'Email sent', result });
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.json({ success: false, message: error.message, stack: error.stack, details: JSON.stringify(error) });
+  }
 });
 
 module.exports = app;
