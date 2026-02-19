@@ -444,6 +444,37 @@ app.put('/admin/order-items', async (req, res) => {
 
 // ──────── CATEGORY CRUD ────────
 
+// ─── POST /admin/auto-confirm ─── Auto-confirm a single pending order
+app.post('/admin/auto-confirm', async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
+    const catalystApp = initCatalyst(req);
+    const zcql = catalystApp.zcql();
+
+    // Verify order is still Pending
+    const orderRes = await zcql.executeZCQLQuery(`SELECT ROWID, Status, User_ID, Total_Amount, CREATEDTIME FROM Orders WHERE ROWID = '${orderId}'`);
+    if (!orderRes.length) return res.status(404).json({ success: false, message: 'Order not found' });
+    const order = orderRes[0].Orders || orderRes[0];
+    if (order.Status !== 'Pending') return res.json({ success: true, message: 'Already confirmed', status: order.Status });
+
+    // Update to Confirmed
+    await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Status: 'Confirmed' });
+    console.log(`Order #${orderId} auto-confirmed via API`);
+    res.json({ success: true, message: 'Auto-confirmed', status: 'Confirmed' });
+
+    // Send email (non-blocking)
+    try {
+      const userRes = await zcql.executeZCQLQuery(`SELECT Name, Email FROM Users WHERE ROWID = '${order.User_ID}'`);
+      if (userRes.length > 0) {
+        const user = userRes[0].Users || userRes[0];
+        const html = statusUpdateEmail(user.Name, orderId, 'Confirmed', order.Total_Amount);
+        sendEmail(catalystApp, user.Email, `Order #${orderId} Auto-Confirmed - ${STORE_NAME}`, html);
+      }
+    } catch (emailErr) { console.error('Auto-confirm email error:', emailErr.message); }
+  } catch (error) { console.error('Auto-confirm error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
 // ─── GET /admin/categories ───
 app.get('/admin/categories', async (req, res) => {
   try {

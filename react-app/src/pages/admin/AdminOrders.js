@@ -49,6 +49,7 @@ const AUTO_CONFIRM_MINUTES = 1;
 
 function AutoConfirmCountdown({ createdTime, orderId, expiredOrdersRef, onExpired }) {
   const [remaining, setRemaining] = useState(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (!createdTime) return;
@@ -58,7 +59,23 @@ function AutoConfirmCountdown({ createdTime, orderId, expiredOrdersRef, onExpire
       setRemaining(diff);
       if (diff <= 0 && !expiredOrdersRef.current.has(orderId)) {
         expiredOrdersRef.current.add(orderId);
-        if (onExpired) onExpired();
+        // Call auto-confirm API directly
+        setConfirming(true);
+        fetch(`${API_BASE}/admin/auto-confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            console.log('Auto-confirm result:', data);
+            if (onExpired) onExpired();
+          })
+          .catch(err => {
+            console.error('Auto-confirm failed:', err);
+            if (onExpired) onExpired();
+          })
+          .finally(() => setConfirming(false));
       }
     }
     tick();
@@ -69,9 +86,9 @@ function AutoConfirmCountdown({ createdTime, orderId, expiredOrdersRef, onExpire
   if (remaining === null) return null;
   if (remaining <= 0) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
-        <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-        Awaiting auto-confirm
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full animate-pulse">
+        <div className="w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+        {confirming ? 'Confirming…' : 'Auto-confirmed!'}
       </span>
     );
   }
