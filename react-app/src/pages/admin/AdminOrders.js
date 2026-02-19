@@ -68,16 +68,16 @@ function AutoConfirmCountdown({ createdTime, orderId, expiredOrdersRef, onExpire
 
   if (remaining === null) return null;
   if (remaining <= 0) {
+    const expiry = new Date(createdTime).getTime() + AUTO_CONFIRM_MINUTES * 60 * 1000;
+    const waitingSecs = Math.floor((Date.now() - expiry) / 1000);
     return (
       <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full animate-pulse">
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-        Auto-confirming…
+        Auto-confirming in {waitingSecs}s…
       </span>
     );
   }
   const secs = Math.ceil(remaining / 1000);
-  const mins = Math.floor(secs / 60);
-  const s = secs % 60;
   const pct = Math.min(100, ((AUTO_CONFIRM_MINUTES * 60 * 1000 - remaining) / (AUTO_CONFIRM_MINUTES * 60 * 1000)) * 100);
   const isUrgent = secs <= 15;
 
@@ -88,7 +88,7 @@ function AutoConfirmCountdown({ createdTime, orderId, expiredOrdersRef, onExpire
           style={{ width: `${pct}%` }} />
       </div>
       <span className={`text-xs font-bold tabular-nums ${isUrgent ? 'text-red-600 animate-pulse' : 'text-amber-600'}`}>
-        {mins}:{s.toString().padStart(2, '0')}
+        {secs}s
       </span>
       <span className="text-[10px] text-gray-400">auto-confirm</span>
     </div>
