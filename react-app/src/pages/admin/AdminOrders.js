@@ -47,9 +47,8 @@ const STATUS_COLORS = {
 
 const AUTO_CONFIRM_MINUTES = 1;
 
-function AutoConfirmCountdown({ createdTime, onExpired }) {
+function AutoConfirmCountdown({ createdTime, orderId, expiredOrdersRef, onExpired }) {
   const [remaining, setRemaining] = useState(null);
-  const expiredRef = useRef(false);
 
   useEffect(() => {
     if (!createdTime) return;
@@ -57,15 +56,15 @@ function AutoConfirmCountdown({ createdTime, onExpired }) {
     function tick() {
       const diff = Math.max(0, expiry - Date.now());
       setRemaining(diff);
-      if (diff <= 0 && !expiredRef.current) {
-        expiredRef.current = true;
+      if (diff <= 0 && !expiredOrdersRef.current.has(orderId)) {
+        expiredOrdersRef.current.add(orderId);
         if (onExpired) onExpired();
       }
     }
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [createdTime, onExpired]);
+  }, [createdTime, orderId, expiredOrdersRef, onExpired]);
 
   if (remaining === null) return null;
   if (remaining <= 0) {
@@ -108,19 +107,20 @@ function AdminOrders() {
   const [editingItems, setEditingItems] = useState(null);
   const [savingItems, setSavingItems] = useState(false);
   const [newOrderFlash, setNewOrderFlash] = useState(null);
+  const expiredOrdersRef = useRef(new Set());
 
-  const fetchOrders = useCallback(() => {
-    setLoading(true);
+  const fetchOrders = useCallback((showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     fetch(`${API_BASE}/admin/orders`)
       .then(r => r.json())
       .then(data => { if (data.success) setOrders(data.data || []); })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { if (showSpinner) setLoading(false); });
   }, []);
 
   useEffect(() => {
     if (!isAuthenticated || user?.Role !== 'Admin') { navigate('/'); return; }
-    fetchOrders();
+    fetchOrders(true);
   }, [isAuthenticated, user, navigate, fetchOrders]);
 
   // Auto-refresh when new orders come in via polling
@@ -267,7 +267,12 @@ function AdminOrders() {
                       <span className="text-sm font-bold text-gray-800">₹{parseFloat(o.Total_Amount || 0).toFixed(0)}</span>
                       <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>{status}</span>
                       {status === 'Pending' && o.CREATEDTIME && (
-                        <AutoConfirmCountdown createdTime={o.CREATEDTIME} onExpired={fetchOrders} />
+                        <AutoConfirmCountdown
+                          createdTime={o.CREATEDTIME}
+                          orderId={o.ROWID}
+                          expiredOrdersRef={expiredOrdersRef}
+                          onExpired={() => { setTimeout(() => fetchOrders(), 2000); }}
+                        />
                       )}
                       <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">{items.length} items</span>
                       <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
