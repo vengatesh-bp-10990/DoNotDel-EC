@@ -201,12 +201,14 @@ app.get('/invoice/:orderId', async (req, res) => {
     const total = parseFloat(order.Total_Amount || subTotal);
     const shippingCharge = 0;
     const tax = Math.max(0, total - subTotal - shippingCharge);
+    const paymentMethod = order.Payment_Method || 'COD';
+    const shippingAddress = order.Shipping_Address || 'Not provided';
 
-    // Build template data
+    // Build template data — must match SmartBrowz template variables exactly
     const templateData = {
       customer_name: customerName,
       order_id: order.ROWID,
-      date: order.CREATEDTIME
+      order_date: order.CREATEDTIME
         ? new Date(order.CREATEDTIME).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
         : new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
       products: items.map(i => ({
@@ -219,6 +221,10 @@ app.get('/invoice/:orderId', async (req, res) => {
       shipment_charge: shippingCharge.toFixed(2),
       tax: tax.toFixed(2),
       total: total.toFixed(2),
+      billing_address: shippingAddress,
+      shipping_address: shippingAddress,
+      payment_method: paymentMethod,
+      shipping_method: 'Standard Delivery',
     };
 
     // Generate PDF using SmartBrowz template
