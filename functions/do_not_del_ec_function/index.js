@@ -203,7 +203,26 @@ app.put('/admin/order-status', async (req, res) => {
 app.get('/admin/categories', async (req, res) => {
   try {
     const catalystApp = initCatalyst(req);
-    const data = await catalystApp.zcql().executeZCQLQuery('SELECT * FROM Categories');
+    const zcql = catalystApp.zcql();
+    let data = [];
+    try {
+      data = await zcql.executeZCQLQuery('SELECT * FROM Categories');
+    } catch (e) { /* Categories table may not exist */ }
+
+    // If Categories table is empty, derive from Products and auto-insert
+    if (data.length === 0) {
+      try {
+        const products = await zcql.executeZCQLQuery('SELECT Category FROM Products');
+        const uniqueCats = [...new Set(products.map(p => (p.Products || p).Category).filter(Boolean))];
+        if (uniqueCats.length > 0) {
+          const table = catalystApp.datastore().table('Categories');
+          for (const name of uniqueCats) {
+            try { await table.insertRow({ Name: name, Description: '', Image_URL: '' }); } catch (e) { /* skip duplicates */ }
+          }
+          data = await zcql.executeZCQLQuery('SELECT * FROM Categories');
+        }
+      } catch (e) { console.error('Category sync error:', e.message); }
+    }
     res.json({ success: true, data });
   } catch (error) { res.status(500).json({ success: false, message: 'Failed to fetch categories' }); }
 });
