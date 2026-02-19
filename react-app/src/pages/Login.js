@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 const GOOGLE_CLIENT_ID = '492564361626-u3tpqrrq76k2h3kpo2e74m18cqs7ggri.apps.googleusercontent.com';
 
 function Login() {
-  const { loginWithCredentials, googleSignIn, isAuthenticated } = useApp();
+  const { loginWithCredentials, googleSignIn, isAuthenticated, user } = useApp();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ email: '', password: '' });
@@ -18,8 +18,9 @@ function Login() {
     try {
       setLoading(true);
       setError('');
-      await googleSignIn(response.credential);
-      navigate('/', { replace: true });
+      const data = await googleSignIn(response.credential);
+      const role = data?.user?.Role;
+      navigate(role === 'Admin' ? '/admin' : '/', { replace: true });
     } catch (err) {
       setError(err.message || 'Google sign-in failed');
     } finally {
@@ -57,8 +58,8 @@ function Login() {
   }, [handleGoogleResponse]);
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/', { replace: true });
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate(user?.Role === 'Admin' ? '/admin' : '/', { replace: true });
+  }, [isAuthenticated, user, navigate]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -74,8 +75,9 @@ function Login() {
 
     setLoading(true);
     try {
-      await loginWithCredentials({ email: form.email.trim().toLowerCase(), password: form.password });
-      navigate('/', { replace: true });
+      const data = await loginWithCredentials({ email: form.email.trim().toLowerCase(), password: form.password });
+      const role = data?.user?.Role;
+      navigate(role === 'Admin' ? '/admin' : '/', { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
     } finally {

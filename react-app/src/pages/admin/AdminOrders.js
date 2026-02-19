@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
@@ -71,12 +71,9 @@ function AdminOrders() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-gray-800">Order Management</h1>
-          <p className="text-sm text-gray-400 mt-1">{orders.length} total orders</p>
-        </div>
-        <Link to="/admin" className="text-sm font-medium text-amber-600 hover:text-amber-700">← Dashboard</Link>
+      <div className="mb-6">
+        <h1 className="text-2xl font-extrabold text-gray-800">Order Management</h1>
+        <p className="text-sm text-gray-400 mt-1">{orders.length} total orders</p>
       </div>
 
       {/* Filter pills */}

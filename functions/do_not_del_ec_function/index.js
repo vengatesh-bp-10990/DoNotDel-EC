@@ -219,19 +219,60 @@ app.delete('/admin/product/:id', async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
+// ─── GET /admin/categories ───
+app.get('/admin/categories', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    const data = await catalystApp.zcql().executeZCQLQuery('SELECT * FROM Categories');
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed to fetch categories' }); }
+});
+
+// ─── POST /admin/category ───
+app.post('/admin/category', async (req, res) => {
+  try {
+    const { Name, Description, Image_URL } = req.body;
+    if (!Name) return res.status(400).json({ success: false, message: 'Name required' });
+    const catalystApp = catalyst.initialize(req);
+    const cat = await catalystApp.datastore().table('Categories').insertRow({ Name, Description: Description || '', Image_URL: Image_URL || '' });
+    res.status(201).json({ success: true, data: cat });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── PUT /admin/category ───
+app.put('/admin/category', async (req, res) => {
+  try {
+    const { ROWID, ...fields } = req.body;
+    if (!ROWID) return res.status(400).json({ success: false, message: 'ROWID required' });
+    const catalystApp = catalyst.initialize(req);
+    await catalystApp.datastore().table('Categories').updateRow({ ROWID, ...fields });
+    res.json({ success: true, message: 'Category updated' });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── DELETE /admin/category/:id ───
+app.delete('/admin/category/:id', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    await catalystApp.datastore().table('Categories').deleteRow(req.params.id);
+    res.json({ success: true, message: 'Deleted' });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
 // ─── GET /admin/stats ───
 app.get('/admin/stats', async (req, res) => {
   try {
     const catalystApp = catalyst.initialize(req);
     const z = catalystApp.zcql();
-    const [orders, products, users] = await Promise.all([
+    const [orders, products, users, categories] = await Promise.all([
       z.executeZCQLQuery('SELECT ROWID, Total_Amount, Status FROM Orders'),
       z.executeZCQLQuery('SELECT ROWID FROM Products'),
       z.executeZCQLQuery('SELECT ROWID FROM Users'),
+      z.executeZCQLQuery('SELECT ROWID FROM Categories'),
     ]);
     const revenue = orders.reduce((s, o) => s + parseFloat(o.Orders?.Total_Amount || 0), 0);
     const pending = orders.filter(o => o.Orders?.Status === 'Pending').length;
-    res.json({ success: true, data: { totalOrders: orders.length, totalProducts: products.length, totalUsers: users.length, totalRevenue: revenue, pendingOrders: pending } });
+    res.json({ success: true, data: { totalOrders: orders.length, totalProducts: products.length, totalUsers: users.length, totalRevenue: revenue, pendingOrders: pending, totalCategories: categories.length } });
   } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
