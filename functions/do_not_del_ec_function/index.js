@@ -252,10 +252,11 @@ app.get('/invoice/:orderId', async (req, res) => {
 app.get('/admin/order-count', async (req, res) => {
   try {
     const catalystApp = initCatalyst(req);
-    const data = await catalystApp.zcql().executeZCQLQuery('SELECT ROWID, CREATEDTIME, Total_Amount, Status FROM Orders ORDER BY CREATEDTIME DESC LIMIT 1');
-    const countData = await catalystApp.zcql().executeZCQLQuery('SELECT COUNT(ROWID) as cnt FROM Orders');
-    const count = parseInt((countData[0]?.Orders?.cnt || countData[0]?.cnt || 0));
-    const latest = data[0]?.Orders || data[0] || null;
+    const zcql = catalystApp.zcql();
+    // Use SELECT ROWID to get all order IDs — reliable count
+    const allRows = await zcql.executeZCQLQuery('SELECT ROWID, CREATEDTIME, Total_Amount FROM Orders ORDER BY CREATEDTIME DESC');
+    const count = allRows.length;
+    const latest = allRows[0]?.Orders || allRows[0] || null;
     res.json({ success: true, count, latestId: latest?.ROWID || null, latestTime: latest?.CREATEDTIME || null, latestAmount: latest?.Total_Amount || null });
   } catch (error) { res.status(500).json({ success: false, count: 0 }); }
 });
