@@ -60,9 +60,11 @@ app.post('/google-auth', async (req, res) => {
     const existing = await zcql.executeZCQLQuery(`SELECT ROWID, Name, Email, Phone, Role FROM Users WHERE Email = '${email}'`);
     if (existing.length > 0) {
       const u = existing[0].Users;
-      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: u.Role } });
+      const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
+      if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
     }
-    const role = email === ADMIN_EMAIL ? 'Admin' : 'Customer';
+    const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : 'Customer';
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name || email.split('@')[0], Email: email, Phone: '', Password_Hash: 'GOOGLE_AUTH', Role: role });
     res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: name || email.split('@')[0], Email: email, Phone: '', Role: role } });
   } catch (error) { console.error('Google auth error:', error); res.status(500).json({ success: false, message: 'Google auth failed' }); }
@@ -99,11 +101,14 @@ app.post('/login', async (req, res) => {
     // If account was created via Google, set the password now on first email/password login
     if (u.Password_Hash === 'GOOGLE_AUTH') {
       const hash = await bcrypt.hash(password, 10);
-      await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Password_Hash: hash });
-      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: u.Role } });
+      const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
+      await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Password_Hash: hash, Role: role });
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
     }
     if (!(await bcrypt.compare(password, u.Password_Hash))) return res.status(401).json({ success: false, message: 'Incorrect password' });
-    res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: u.Role } });
+    const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
+    if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
+    res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
   } catch (error) { console.error('Login error:', error); res.status(500).json({ success: false, message: 'Login failed' }); }
 });
 
