@@ -7,6 +7,10 @@ const bcrypt = require('bcryptjs');
 const app = express();
 app.use(express.json());
 
+// Enable CORS for Slate and Catalyst domains
+const cors = require('cors');
+app.use(cors({ origin: true, credentials: true }));
+
 const ADMIN_EMAIL = 'vengi9360@gmail.com';
 const CACHE_SEGMENT_ID = '21282000000050152';
 const PRODUCTS_CACHE_KEY = 'all_products';

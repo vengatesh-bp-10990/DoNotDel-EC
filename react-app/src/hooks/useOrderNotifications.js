@@ -4,6 +4,7 @@ const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless
 const POLL_INTERVAL = 10000; // 10 seconds
 const LS_KEY = 'admin_known_order_count';
 const LS_NOTIFS_KEY = 'admin_notifications';
+const LS_INIT_KEY = 'admin_notif_initialized';
 
 // ─── Sound (Web Audio API — no external files) ───
 function playNotificationSound() {
@@ -44,12 +45,18 @@ function showBrowserNotification(title, body) {
   } catch (e) { /* notification not supported */ }
 }
 
-// ─── Persisted state helpers ───
+// ─── Persisted state helpers (all in localStorage to survive remounts) ───
 function getStoredCount() {
   try { return parseInt(localStorage.getItem(LS_KEY) || '0'); } catch { return 0; }
 }
 function setStoredCount(c) {
   try { localStorage.setItem(LS_KEY, String(c)); } catch {}
+}
+function isInitialized() {
+  try { return localStorage.getItem(LS_INIT_KEY) === 'true'; } catch { return false; }
+}
+function markInitialized() {
+  try { localStorage.setItem(LS_INIT_KEY, 'true'); } catch {}
 }
 function getStoredNotifs() {
   try { return JSON.parse(localStorage.getItem(LS_NOTIFS_KEY) || '[]'); } catch { return []; }
@@ -64,7 +71,6 @@ export function useOrderNotifications(isAdmin) {
   const [latestOrder, setLatestOrder] = useState(null);
   const pollTimerRef = useRef(null);
   const onNewOrderCallbacks = useRef([]);
-  const hasInitialized = useRef(false);
 
   // Subscribe to new order events (for AdminOrders auto-refresh)
   const onNewOrder = useCallback((cb) => {
@@ -94,25 +100,29 @@ export function useOrderNotifications(isAdmin) {
   const checkForNewOrders = useCallback(async () => {
     if (!isAdmin) return;
     try {
+      console.log('[Notif] Polling order-count...');
       const res = await fetch(`${API_BASE}/admin/order-count`);
       const data = await res.json();
+      console.log('[Notif] Response:', data);
       if (!data.success) return;
 
       const currentCount = data.count || 0;
       const storedCount = getStoredCount();
+      const alreadyInit = isInitialized();
 
-      // First time ever — just store the count
-      if (!hasInitialized.current) {
-        hasInitialized.current = true;
-        if (storedCount === 0 && currentCount > 0) {
-          // First visit — store current count, don't notify
-          setStoredCount(currentCount);
-          return;
-        }
+      console.log(`[Notif] current=${currentCount}, stored=${storedCount}, initialized=${alreadyInit}`);
+
+      // First time ever — just store the count, don't notify
+      if (!alreadyInit) {
+        console.log('[Notif] First time init — storing count, no notification');
+        setStoredCount(currentCount);
+        markInitialized();
+        return;
       }
 
-      if (currentCount > storedCount && storedCount > 0) {
+      if (currentCount > storedCount) {
         const newCount = currentCount - storedCount;
+        console.log(`[Notif] 🔔 ${newCount} NEW order(s) detected!`);
         setStoredCount(currentCount);
 
         // Fetch full order details for the new orders
@@ -120,7 +130,6 @@ export function useOrderNotifications(isAdmin) {
           const ordersRes = await fetch(`${API_BASE}/admin/orders`);
           const ordersData = await ordersRes.json();
           if (ordersData.success && ordersData.data) {
-            // The newest orders are first (ORDER BY CREATEDTIME DESC)
             const newOrders = ordersData.data.slice(0, newCount);
 
             const newNotifs = newOrders.map(o => ({
@@ -161,13 +170,14 @@ export function useOrderNotifications(isAdmin) {
             // Notify subscribers (AdminOrders auto-refresh)
             onNewOrderCallbacks.current.forEach(cb => cb(newOrders));
           }
-        } catch (e) { /* fallback: still update count */ }
-      } else if (currentCount !== storedCount) {
-        // Orders deleted or count changed — sync
+        } catch (e) { console.warn('[Notif] Failed to fetch order details:', e); }
+      } else if (currentCount < storedCount) {
+        // Orders deleted — sync count down
+        console.log('[Notif] Count decreased, syncing');
         setStoredCount(currentCount);
       }
     } catch (e) {
-      console.warn('Order poll error:', e);
+      console.warn('[Notif] Poll error:', e);
     }
   }, [isAdmin]);
 
@@ -181,6 +191,7 @@ export function useOrderNotifications(isAdmin) {
   // Start polling
   useEffect(() => {
     if (!isAdmin) return;
+    console.log('[Notif] Starting poll, interval:', POLL_INTERVAL);
     checkForNewOrders();
     pollTimerRef.current = setInterval(checkForNewOrders, POLL_INTERVAL);
     return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
