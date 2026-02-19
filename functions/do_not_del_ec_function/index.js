@@ -250,14 +250,19 @@ app.get('/admin/categories', async (req, res) => {
         if (uniqueCats.length > 0) {
           const table = catalystApp.datastore().table('Categories');
           for (const name of uniqueCats) {
-            try { await table.insertRow({ Name: name, Description: '', Image_URL: '' }); } catch (e) { /* skip duplicates */ }
+            try { await table.insertRow({ Category_Name: name, Description: '', Image_URL: '' }); } catch (e) { /* skip */ }
           }
           data = await zcql.executeZCQLQuery('SELECT * FROM Categories');
         }
       } catch (e) { console.error('Category sync error:', e.message); }
     }
-    res.json({ success: true, data });
-  } catch (error) { res.status(500).json({ success: false, message: 'Failed to fetch categories' }); }
+    // Normalize: add a Name field mapped from Category_Name for frontend compatibility
+    const normalized = data.map(row => {
+      const c = row.Categories || row;
+      return { ...c, Name: c.Category_Name || c.Name || '' };
+    });
+    res.json({ success: true, data: normalized });
+  } catch (error) { console.error('Fetch categories error:', error.message); res.status(500).json({ success: false, message: error.message || 'Failed to fetch categories' }); }
 });
 
 // ─── POST /admin/category ───
@@ -266,20 +271,24 @@ app.post('/admin/category', async (req, res) => {
     const { Name, Description, Image_URL } = req.body;
     if (!Name) return res.status(400).json({ success: false, message: 'Name required' });
     const catalystApp = initCatalyst(req);
-    const cat = await catalystApp.datastore().table('Categories').insertRow({ Name, Description: Description || '', Image_URL: Image_URL || '' });
-    res.status(201).json({ success: true, data: cat });
-  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+    const cat = await catalystApp.datastore().table('Categories').insertRow({ Category_Name: Name, Description: Description || '', Image_URL: Image_URL || '' });
+    res.status(201).json({ success: true, data: { ...cat, Name: Name } });
+  } catch (error) { console.error('Category create error:', error.message); res.status(500).json({ success: false, message: error.message || 'Failed to create category' }); }
 });
 
 // ─── PUT /admin/category ───
 app.put('/admin/category', async (req, res) => {
   try {
-    const { ROWID, ...fields } = req.body;
+    const { ROWID, Name, Description, Image_URL } = req.body;
     if (!ROWID) return res.status(400).json({ success: false, message: 'ROWID required' });
     const catalystApp = initCatalyst(req);
-    await catalystApp.datastore().table('Categories').updateRow({ ROWID, ...fields });
+    const updateData = { ROWID };
+    if (Name !== undefined) updateData.Category_Name = Name;
+    if (Description !== undefined) updateData.Description = Description;
+    if (Image_URL !== undefined) updateData.Image_URL = Image_URL;
+    await catalystApp.datastore().table('Categories').updateRow(updateData);
     res.json({ success: true, message: 'Category updated' });
-  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+  } catch (error) { res.status(500).json({ success: false, message: error.message || 'Failed' }); }
 });
 
 // ─── DELETE /admin/category/:id ───
