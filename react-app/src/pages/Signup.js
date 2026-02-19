@@ -116,7 +116,7 @@ function Signup() {
   return (
     <div className="min-h-[calc(100vh-64px)] flex">
       {/* Left Panel — Branding (hidden on mobile) */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 relative overflow-hidden">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 left-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
@@ -124,9 +124,9 @@ function Signup() {
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20 w-full">
           <div className="flex items-center gap-3 mb-10">
             <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">EC</span>
+              <span className="text-white font-bold text-lg">🏠</span>
             </div>
-            <span className="text-2xl font-bold text-white">DoNotDel-EC</span>
+            <span className="text-2xl font-bold text-white">Homemade Products</span>
           </div>
 
           <h1 className="text-4xl xl:text-5xl font-extrabold text-white leading-tight mb-6">
@@ -156,14 +156,14 @@ function Signup() {
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <div className="lg:hidden text-center mb-5">
-            <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
-              <span className="text-white font-bold text-lg">EC</span>
+            <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+              <span className="text-white font-bold text-lg">🏠</span>
             </div>
           </div>
 
           {/* Header */}
           <div className="text-center lg:text-left mb-6">
-            <h2 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+            <h2 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
               Create Account
             </h2>
             <p className="text-gray-400 mt-2 text-sm sm:text-base">
@@ -197,7 +197,7 @@ function Signup() {
                 <input
                   type="text" name="name" value={form.name} onChange={handleChange}
                   placeholder="Enter your full name"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all text-sm"
                 />
               </div>
             </div>
@@ -212,7 +212,7 @@ function Signup() {
                 <input
                   type="email" name="email" value={form.email} onChange={handleChange}
                   placeholder="you@example.com"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all text-sm"
                 />
               </div>
             </div>
@@ -227,7 +227,7 @@ function Signup() {
                 <input
                   type="tel" name="phone" value={form.phone} onChange={handleChange}
                   placeholder="+91 98765 43210"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all text-sm"
                 />
               </div>
             </div>
@@ -242,7 +242,7 @@ function Signup() {
                 <input
                   type={showPassword ? 'text' : 'password'} name="password" value={form.password} onChange={handleChange}
                   placeholder="Min 6 characters"
-                  className="w-full pl-10 pr-11 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
+                  className="w-full pl-10 pr-11 py-2.5 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all text-sm"
                 />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
                   {showPassword ? <EyeOffIcon /> : <EyeIcon />}
@@ -260,7 +260,7 @@ function Signup() {
                 <input
                   type={showConfirm ? 'text' : 'password'} name="confirmPassword" value={form.confirmPassword} onChange={handleChange}
                   placeholder="Re-enter your password"
-                  className="w-full pl-10 pr-11 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
+                  className="w-full pl-10 pr-11 py-2.5 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all text-sm"
                 />
                 <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
                   {showConfirm ? <EyeOffIcon /> : <EyeIcon />}
@@ -272,7 +272,7 @@ function Signup() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-lg shadow-emerald-200 hover:shadow-emerald-300 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-lg shadow-amber-200 hover:shadow-amber-300 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -297,7 +297,7 @@ function Signup() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">
               Already have an account?{' '}
-              <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-700 underline underline-offset-2 transition-colors">
+              <Link to="/login" className="font-semibold text-amber-600 hover:text-amber-700 underline underline-offset-2 transition-colors">
                 Sign In
               </Link>
             </p>

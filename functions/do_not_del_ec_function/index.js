@@ -5,346 +5,214 @@ const catalyst = require('zcatalyst-sdk-node');
 const bcrypt = require('bcryptjs');
 
 const app = express();
-
 app.use(express.json());
 
-// ─── POST /google-auth — Handle Google Sign-In credential ───
+const ADMIN_EMAIL = 'vengi9360@gmail.com';
+
+// ─── POST /google-auth ───
 app.post('/google-auth', async (req, res) => {
   try {
     const { credential } = req.body;
-    if (!credential) {
-      return res.status(400).json({ success: false, message: 'Google credential is required' });
-    }
-
-    // Decode the JWT payload (base64url encoded)
+    if (!credential) return res.status(400).json({ success: false, message: 'Google credential required' });
     const parts = credential.split('.');
-    if (parts.length !== 3) {
-      return res.status(400).json({ success: false, message: 'Invalid credential format' });
-    }
+    if (parts.length !== 3) return res.status(400).json({ success: false, message: 'Invalid credential' });
     const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-    const { email, name, sub: googleId } = payload;
-
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Could not extract email from Google token' });
-    }
+    const { email, name } = payload;
+    if (!email) return res.status(400).json({ success: false, message: 'No email in token' });
 
     const catalystApp = catalyst.initialize(req);
     const zcql = catalystApp.zcql();
-
-    // Check if user exists
-    const existing = await zcql.executeZCQLQuery(
-      `SELECT ROWID, Name, Email, Phone, Role FROM Users WHERE Email = '${email}'`
-    );
-
+    const existing = await zcql.executeZCQLQuery(`SELECT ROWID, Name, Email, Phone, Role FROM Users WHERE Email = '${email}'`);
     if (existing.length > 0) {
-      const userData = existing[0].Users;
-      return res.status(200).json({
-        success: true,
-        message: 'Login successful',
-        user: {
-          ROWID: userData.ROWID,
-          Name: userData.Name,
-          Email: userData.Email,
-          Phone: userData.Phone || '',
-          Role: userData.Role
-        }
-      });
+      const u = existing[0].Users;
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: u.Role } });
     }
-
-    // Create new user (no password needed for Google users)
-    const datastore = catalystApp.datastore();
-    const usersTable = datastore.table('Users');
-    const newUser = await usersTable.insertRow({
-      Name: name || email.split('@')[0],
-      Email: email,
-      Phone: '',
-      Password_Hash: 'GOOGLE_AUTH',
-      Role: 'Customer'
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Account created via Google',
-      user: {
-        ROWID: newUser.ROWID,
-        Name: name || email.split('@')[0],
-        Email: email,
-        Phone: '',
-        Role: 'Customer'
-      }
-    });
-  } catch (error) {
-    console.error('Google auth error:', error);
-    res.status(500).json({ success: false, message: 'Google authentication failed' });
-  }
+    const role = email === ADMIN_EMAIL ? 'Admin' : 'Customer';
+    const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name || email.split('@')[0], Email: email, Phone: '', Password_Hash: 'GOOGLE_AUTH', Role: role });
+    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: name || email.split('@')[0], Email: email, Phone: '', Role: role } });
+  } catch (error) { console.error('Google auth error:', error); res.status(500).json({ success: false, message: 'Google auth failed' }); }
 });
 
-// ─── POST /signup — Create a new user with hashed password ───
+// ─── POST /signup ───
 app.post('/signup', async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
-    }
-
-    // Email format check
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ success: false, message: 'Invalid email format' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
-    }
+    if (!name || !email || !password) return res.status(400).json({ success: false, message: 'Name, email, password required' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ success: false, message: 'Invalid email' });
+    if (password.length < 6) return res.status(400).json({ success: false, message: 'Password min 6 chars' });
 
     const catalystApp = catalyst.initialize(req);
-    const zcql = catalystApp.zcql();
+    const existing = await catalystApp.zcql().executeZCQLQuery(`SELECT ROWID FROM Users WHERE Email = '${email}'`);
+    if (existing.length > 0) return res.status(409).json({ success: false, message: 'Email already exists' });
 
-    // Check if email already exists
-    const existing = await zcql.executeZCQLQuery(
-      `SELECT ROWID, Name, Email FROM Users WHERE Email = '${email}'`
-    );
-
-    if (existing.length > 0) {
-      return res.status(409).json({ success: false, message: 'An account with this email already exists' });
-    }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    // Insert user
-    const datastore = catalystApp.datastore();
-    const usersTable = datastore.table('Users');
-    const newUser = await usersTable.insertRow({
-      Name: name,
-      Email: email,
-      Phone: phone || '',
-      Password_Hash: passwordHash,
-      Role: 'Customer'
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Account created successfully!',
-      user: {
-        ROWID: newUser.ROWID,
-        Name: name,
-        Email: email,
-        Phone: phone || '',
-        Role: 'Customer'
-      }
-    });
-  } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({ success: false, message: 'Failed to create account. Please try again.' });
-  }
+    const hash = await bcrypt.hash(password, 10);
+    const role = email === ADMIN_EMAIL ? 'Admin' : 'Customer';
+    const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name, Email: email, Phone: phone || '', Password_Hash: hash, Role: role });
+    res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
+  } catch (error) { console.error('Signup error:', error); res.status(500).json({ success: false, message: 'Signup failed' }); }
 });
 
-// ─── POST /login — Authenticate user with email & password ───
+// ─── POST /login ───
 app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required' });
-    }
-
+    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
     const catalystApp = catalyst.initialize(req);
-    const zcql = catalystApp.zcql();
-
-    const results = await zcql.executeZCQLQuery(
-      `SELECT ROWID, Name, Email, Phone, Password_Hash, Role FROM Users WHERE Email = '${email}'`
-    );
-
-    if (results.length === 0) {
-      return res.status(401).json({ success: false, message: 'No account found with this email' });
-    }
-
-    const userData = results[0].Users;
-
-    // Verify password
-    const isMatch = await bcrypt.compare(password, userData.Password_Hash);
-    if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Incorrect password' });
-    }
-
-    // Return user data (never return password hash)
-    res.status(200).json({
-      success: true,
-      message: 'Login successful',
-      user: {
-        ROWID: userData.ROWID,
-        Name: userData.Name,
-        Email: userData.Email,
-        Phone: userData.Phone || '',
-        Role: userData.Role
-      }
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ success: false, message: 'Login failed. Please try again.' });
-  }
+    const results = await catalystApp.zcql().executeZCQLQuery(`SELECT ROWID, Name, Email, Phone, Password_Hash, Role FROM Users WHERE Email = '${email}'`);
+    if (results.length === 0) return res.status(401).json({ success: false, message: 'No account found' });
+    const u = results[0].Users;
+    if (!(await bcrypt.compare(password, u.Password_Hash))) return res.status(401).json({ success: false, message: 'Incorrect password' });
+    res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: u.Role } });
+  } catch (error) { console.error('Login error:', error); res.status(500).json({ success: false, message: 'Login failed' }); }
 });
 
-// GET /products — Fetch all products
+// ─── PUT /profile ───
+app.put('/profile', async (req, res) => {
+  try {
+    const { userId, name, phone } = req.body;
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID required' });
+    const catalystApp = catalyst.initialize(req);
+    const row = { ROWID: userId };
+    if (name) row.Name = name;
+    if (phone !== undefined) row.Phone = phone;
+    await catalystApp.datastore().table('Users').updateRow(row);
+    res.json({ success: true, message: 'Profile updated' });
+  } catch (error) { console.error('Profile error:', error); res.status(500).json({ success: false, message: 'Update failed' }); }
+});
+
+// ─── GET /products ───
 app.get('/products', async (req, res) => {
   try {
     const catalystApp = catalyst.initialize(req);
-    const zcql = catalystApp.zcql();
-    const queryResult = await zcql.executeZCQLQuery('SELECT * FROM Products');
-    res.status(200).json({ success: true, data: queryResult });
-  } catch (error) {
-    console.error('Error fetching products:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch products' });
-  }
+    const data = await catalystApp.zcql().executeZCQLQuery('SELECT * FROM Products');
+    res.json({ success: true, data });
+  } catch (error) { console.error('Products error:', error); res.status(500).json({ success: false, message: 'Failed to fetch products' }); }
 });
 
-// POST /register — Register a new user (or return existing)
-app.post('/register', async (req, res) => {
-  try {
-    const { Name, Email } = req.body;
-
-    if (!Name || !Email) {
-      return res.status(400).json({ success: false, message: 'Name and Email are required' });
-    }
-
-    const catalystApp = catalyst.initialize(req);
-    const zcql = catalystApp.zcql();
-
-    // Check if user already exists
-    const existing = await zcql.executeZCQLQuery(
-      `SELECT * FROM Users WHERE Email = '${Email}'`
-    );
-
-    if (existing.length > 0) {
-      return res.status(200).json({
-        success: true,
-        message: 'User already exists',
-        ROWID: existing[0].Users.ROWID
-      });
-    }
-
-    // Create new user with Role 'Customer'
-    const datastore = catalystApp.datastore();
-    const usersTable = datastore.table('Users');
-    const newUser = await usersTable.insertRow({
-      Name,
-      Email,
-      Role: 'Customer'
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      ROWID: newUser.ROWID
-    });
-  } catch (error) {
-    console.error('Error registering user:', error);
-    res.status(500).json({ success: false, message: 'Failed to register user' });
-  }
-});
-
-// POST /orders — Create a new order with status 'Pending'
+// ─── POST /orders ───
 app.post('/orders', async (req, res) => {
   try {
-    const { User_ID, Total_Amount, Shipping_Address } = req.body;
-
-    if (!User_ID || !Total_Amount || !Shipping_Address) {
-      return res.status(400).json({
-        success: false,
-        message: 'User_ID, Total_Amount, and Shipping_Address are required'
-      });
-    }
-
+    const { User_ID, Total_Amount, Shipping_Address, Items, Payment_Method } = req.body;
+    if (!User_ID || !Total_Amount || !Shipping_Address) return res.status(400).json({ success: false, message: 'Required fields missing' });
     const catalystApp = catalyst.initialize(req);
-    const datastore = catalystApp.datastore();
-    const ordersTable = datastore.table('Orders');
-
-    const newOrder = await ordersTable.insertRow({
-      User_ID,
-      Total_Amount,
-      Shipping_Address,
-      Status: 'Pending'
+    const newOrder = await catalystApp.datastore().table('Orders').insertRow({
+      User_ID, Total_Amount, Shipping_Address, Status: 'Pending',
+      Items: Items ? JSON.stringify(Items) : '[]',
+      Payment_Method: Payment_Method || 'COD'
     });
-
-    res.status(201).json({
-      success: true,
-      message: 'Order created successfully',
-      data: newOrder
-    });
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ success: false, message: 'Failed to create order' });
-  }
+    res.status(201).json({ success: true, message: 'Order placed!', data: newOrder });
+  } catch (error) { console.error('Order error:', error); res.status(500).json({ success: false, message: 'Failed to create order' }); }
 });
 
-// GET /seed — Populate Products table with dummy data
+// ─── GET /orders/:userId ───
+app.get('/orders/:userId', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    const data = await catalystApp.zcql().executeZCQLQuery(`SELECT * FROM Orders WHERE User_ID = '${req.params.userId}' ORDER BY CREATEDTIME DESC`);
+    res.json({ success: true, data });
+  } catch (error) { console.error('Get orders error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── GET /order/:orderId ───
+app.get('/order/:orderId', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    const data = await catalystApp.zcql().executeZCQLQuery(`SELECT * FROM Orders WHERE ROWID = '${req.params.orderId}'`);
+    if (data.length === 0) return res.status(404).json({ success: false, message: 'Order not found' });
+    res.json({ success: true, data: data[0] });
+  } catch (error) { console.error('Get order error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ──────── ADMIN ────────
+
+// ─── GET /admin/orders ───
+app.get('/admin/orders', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    const data = await catalystApp.zcql().executeZCQLQuery('SELECT * FROM Orders ORDER BY CREATEDTIME DESC');
+    res.json({ success: true, data });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── PUT /admin/order-status ───
+app.put('/admin/order-status', async (req, res) => {
+  try {
+    const { orderId, status } = req.body;
+    if (!orderId || !status) return res.status(400).json({ success: false, message: 'orderId, status required' });
+    const catalystApp = catalyst.initialize(req);
+    await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Status: status });
+    res.json({ success: true, message: 'Status updated' });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── POST /admin/product ───
+app.post('/admin/product', async (req, res) => {
+  try {
+    const { Name, Description, Price, Category, Image_URL, Stock_Quantity } = req.body;
+    if (!Name || !Price || !Category) return res.status(400).json({ success: false, message: 'Name, Price, Category required' });
+    const catalystApp = catalyst.initialize(req);
+    const p = await catalystApp.datastore().table('Products').insertRow({ Name, Description: Description || '', Price, Category, Image_URL: Image_URL || '', Stock_Quantity: Stock_Quantity || 0 });
+    res.status(201).json({ success: true, data: p });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── PUT /admin/product ───
+app.put('/admin/product', async (req, res) => {
+  try {
+    const { ROWID, ...fields } = req.body;
+    if (!ROWID) return res.status(400).json({ success: false, message: 'ROWID required' });
+    const catalystApp = catalyst.initialize(req);
+    await catalystApp.datastore().table('Products').updateRow({ ROWID, ...fields });
+    res.json({ success: true, message: 'Product updated' });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── DELETE /admin/product/:id ───
+app.delete('/admin/product/:id', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    await catalystApp.datastore().table('Products').deleteRow(req.params.id);
+    res.json({ success: true, message: 'Deleted' });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── GET /admin/stats ───
+app.get('/admin/stats', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    const z = catalystApp.zcql();
+    const [orders, products, users] = await Promise.all([
+      z.executeZCQLQuery('SELECT ROWID, Total_Amount, Status FROM Orders'),
+      z.executeZCQLQuery('SELECT ROWID FROM Products'),
+      z.executeZCQLQuery('SELECT ROWID FROM Users'),
+    ]);
+    const revenue = orders.reduce((s, o) => s + parseFloat(o.Orders?.Total_Amount || 0), 0);
+    const pending = orders.filter(o => o.Orders?.Status === 'Pending').length;
+    res.json({ success: true, data: { totalOrders: orders.length, totalProducts: products.length, totalUsers: users.length, totalRevenue: revenue, pendingOrders: pending } });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── GET /seed ───
 app.get('/seed', async (req, res) => {
   try {
     const products = [
-      {
-        Name: 'Coconut Oil',
-        Description: 'Pure cold-pressed coconut oil, ideal for cooking and hair care.',
-        Price: 250,
-        Category: 'Oils',
-        Image_URL: 'https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=600',
-        Stock_Quantity: 20
-      },
-      {
-        Name: 'Homemade Hair Oil',
-        Description: 'Traditional herbal hair oil made with natural ingredients for healthy hair.',
-        Price: 500,
-        Category: 'Oils',
-        Image_URL: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600',
-        Stock_Quantity: 15
-      },
-      {
-        Name: 'Groundnut Oil',
-        Description: 'Farm-fresh groundnut oil with rich aroma, perfect for deep frying.',
-        Price: 350,
-        Category: 'Oils',
-        Image_URL: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=600',
-        Stock_Quantity: 25
-      },
-      {
-        Name: 'Silk Saree',
-        Description: 'Elegant handwoven silk saree with intricate zari border work.',
-        Price: 1500,
-        Category: 'Clothing',
-        Image_URL: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=600',
-        Stock_Quantity: 10
-      },
-      {
-        Name: 'Cotton Nightwear',
-        Description: 'Comfortable breathable cotton nightwear set for a restful sleep.',
-        Price: 700,
-        Category: 'Clothing',
-        Image_URL: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600',
-        Stock_Quantity: 30
-      }
+      { Name: 'Cold-Pressed Coconut Oil', Description: 'Pure cold-pressed coconut oil from fresh Kerala coconuts.', Price: 250, Category: 'Coconut Products', Image_URL: 'https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=600', Stock_Quantity: 50 },
+      { Name: 'Virgin Coconut Oil', Description: 'Premium virgin coconut oil, perfect for skin & cooking.', Price: 450, Category: 'Coconut Products', Image_URL: 'https://images.unsplash.com/photo-1590301157284-4e08f2af45ad?w=600', Stock_Quantity: 30 },
+      { Name: 'Herbal Hair Oil', Description: 'Traditional hair oil with bhringraj, amla & coconut.', Price: 350, Category: 'Hair Oils', Image_URL: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=600', Stock_Quantity: 40 },
+      { Name: 'Curry Leaf Hair Oil', Description: 'Homemade curry leaf infused oil for hair growth.', Price: 299, Category: 'Hair Oils', Image_URL: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?w=600', Stock_Quantity: 35 },
+      { Name: 'Cold-Pressed Groundnut Oil', Description: 'Farm-fresh groundnut oil for traditional cooking.', Price: 320, Category: 'Groundnut Oils', Image_URL: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=600', Stock_Quantity: 45 },
+      { Name: 'Filtered Groundnut Oil', Description: 'Double-filtered pure groundnut oil. No chemicals.', Price: 380, Category: 'Groundnut Oils', Image_URL: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=600', Stock_Quantity: 25 },
+      { Name: 'Kanchipuram Silk Saree', Description: 'Handwoven silk saree with intricate zari border.', Price: 2500, Category: 'Sarees', Image_URL: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=600', Stock_Quantity: 15 },
+      { Name: 'Cotton Handloom Saree', Description: 'Soft cotton handloom saree, light and breathable.', Price: 850, Category: 'Sarees', Image_URL: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=600', Stock_Quantity: 20 },
+      { Name: 'Cotton Nightwear Set', Description: 'Comfortable cotton nightwear set for women.', Price: 699, Category: 'Nightwear', Image_URL: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600', Stock_Quantity: 40 },
+      { Name: 'Silk Nightwear Gown', Description: 'Premium silk nightwear gown, soft and luxurious.', Price: 1200, Category: 'Nightwear', Image_URL: 'https://images.unsplash.com/photo-1617331721458-bd3bd3f9c7f8?w=600', Stock_Quantity: 18 },
     ];
-
     const catalystApp = catalyst.initialize(req);
-    const datastore = catalystApp.datastore();
-    const productsTable = datastore.table('Products');
-
-    const insertedRows = [];
-    for (const product of products) {
-      const row = await productsTable.insertRow(product);
-      insertedRows.push(row);
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Database seeded successfully',
-      data: insertedRows
-    });
-  } catch (error) {
-    console.error('Error seeding database:', error);
-    res.status(500).json({ success: false, message: 'Failed to seed database' });
-  }
+    const table = catalystApp.datastore().table('Products');
+    const inserted = [];
+    for (const p of products) inserted.push(await table.insertRow(p));
+    res.status(201).json({ success: true, message: 'Seeded 10 products', data: inserted });
+  } catch (error) { res.status(500).json({ success: false, message: 'Seed failed' }); }
 });
 
 module.exports = app;

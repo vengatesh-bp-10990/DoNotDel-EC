@@ -1,62 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 function Cart() {
-  const { cartItems, cartTotal, removeFromCart, updateQuantity, clearCart, isAuthenticated, user, openAuthModal } = useApp();
+  const { cartItems, cartTotal, removeFromCart, updateQuantity, clearCart, isAuthenticated, openAuthModal } = useApp();
   const navigate = useNavigate();
-  const [orderPlaced, setOrderPlaced] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  async function handleCheckout() {
+  function handleCheckout() {
     if (cartItems.length === 0) return;
-
-    if (!isAuthenticated) {
-      openAuthModal();
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await fetch('https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          User_ID: user?.ROWID || user?.Email || 'guest',
-          Total_Amount: cartTotal,
-          Shipping_Address: 'Cash on Delivery'
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        clearCart();
-        setOrderPlaced(true);
-      }
-    } catch (err) {
-      console.error('Checkout error:', err);
-    }
-    setLoading(false);
-  }
-
-  if (orderPlaced) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[65vh] px-4">
-        <div className="card p-10 text-center max-w-md">
-          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
-            <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Placed!</h2>
-          <p className="text-gray-500 mb-8 leading-relaxed">
-            Your order has been placed successfully.<br />Payment: Cash on Delivery
-          </p>
-          <Link to="/" className="btn-primary inline-block">
-            Continue Shopping
-          </Link>
-        </div>
-      </div>
-    );
+    if (!isAuthenticated) { openAuthModal(); return; }
+    navigate('/checkout');
   }
 
   if (cartItems.length === 0) {
@@ -83,7 +36,7 @@ function Cart() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-800">Shopping Cart</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-800">Shopping Cart</h1>
           <p className="text-gray-400 text-sm mt-1">{cartItems.length} item{cartItems.length > 1 ? 's' : ''} in your cart</p>
         </div>
         <button
@@ -197,36 +150,16 @@ function Cart() {
               </div>
             )}
 
-            <button
-              onClick={handleCheckout}
-              disabled={loading}
-              className="w-full mt-6 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 disabled:from-emerald-300 disabled:to-emerald-400 text-white font-bold py-3.5 px-4 rounded-xl transition-all duration-200 shadow-sm hover:shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  Placing Order...
-                </>
-              ) : !isAuthenticated ? (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                  </svg>
-                  Login to Checkout
-                </>
+            <button onClick={handleCheckout}
+              className="w-full mt-6 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-sm hover:shadow-lg active:scale-[0.98] flex items-center justify-center gap-2">
+              {!isAuthenticated ? (
+                <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>Login to Checkout</>
               ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  Checkout — Cash on Delivery
-                </>
+                <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>Proceed to Checkout</>
               )}
             </button>
 
-            <p className="text-center text-xs text-gray-400 mt-4">
-              Secure checkout · Free delivery on all orders
-            </p>
+            <p className="text-center text-xs text-gray-400 mt-4">Secure checkout · Cash on Delivery</p>
           </div>
         </div>
       </div>

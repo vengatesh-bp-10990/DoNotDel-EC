@@ -93,7 +93,7 @@ function Login() {
   return (
     <div className="min-h-[calc(100vh-64px)] flex">
       {/* Left Panel — Branding (hidden on mobile) */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 relative overflow-hidden">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl" />
         <div className="absolute top-1/3 right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
@@ -101,16 +101,16 @@ function Login() {
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20 w-full">
           <div className="flex items-center gap-3 mb-10">
             <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">EC</span>
+              <span className="text-white font-bold text-lg">🏠</span>
             </div>
-            <span className="text-2xl font-bold text-white">DoNotDel-EC</span>
+            <span className="text-2xl font-bold text-white">Homemade Products</span>
           </div>
 
           <h1 className="text-4xl xl:text-5xl font-extrabold text-white leading-tight mb-6">
             Welcome<br />Back
           </h1>
           <p className="text-white/80 text-lg leading-relaxed mb-10 max-w-md">
-            Sign in to access your cart, track orders, and shop premium oils & handcrafted clothing.
+            Sign in to access your cart, track orders, and shop premium homemade oils & handcrafted clothing.
           </p>
 
           <div className="space-y-4">
@@ -133,14 +133,14 @@ function Login() {
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <div className="lg:hidden text-center mb-6">
-            <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
-              <span className="text-white font-bold text-lg">EC</span>
+            <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+              <span className="text-white font-bold text-lg">🏠</span>
             </div>
           </div>
 
           {/* Header */}
           <div className="text-center lg:text-left mb-8">
-            <h2 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            <h2 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
               Sign In
             </h2>
             <p className="text-gray-400 mt-2 text-sm sm:text-base">
@@ -169,7 +169,7 @@ function Login() {
                   type="email" name="email" value={form.email} onChange={handleChange}
                   placeholder="you@example.com"
                   autoComplete="email"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all text-sm"
                 />
               </div>
             </div>
@@ -185,7 +185,7 @@ function Login() {
                   type={showPassword ? 'text' : 'password'} name="password" value={form.password} onChange={handleChange}
                   placeholder="Enter your password"
                   autoComplete="current-password"
-                  className="w-full pl-10 pr-11 py-3 rounded-xl border border-gray-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm"
+                  className="w-full pl-10 pr-11 py-3 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition-all text-sm"
                 />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
                   {showPassword ? <EyeOffIcon /> : <EyeIcon />}
@@ -197,7 +197,7 @@ function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-lg shadow-amber-200 hover:shadow-amber-300 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -222,7 +222,7 @@ function Login() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">
               Don't have an account?{' '}
-              <Link to="/signup" className="font-semibold text-indigo-600 hover:text-indigo-700 underline underline-offset-2 transition-colors">
+              <Link to="/signup" className="font-semibold text-amber-600 hover:text-amber-700 underline underline-offset-2 transition-colors">
                 Sign Up
               </Link>
             </p>

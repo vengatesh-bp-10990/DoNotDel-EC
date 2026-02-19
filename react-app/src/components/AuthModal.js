@@ -84,13 +84,11 @@ function AuthModal() {
         </button>
 
         {/* Gradient Header */}
-        <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 px-6 pt-8 pb-6 text-center">
+        <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 px-6 pt-8 pb-6 text-center">
           <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
+            <span className="text-2xl">🏠</span>
           </div>
-          <h3 className="text-xl font-bold text-white">Welcome to DoNotDel-EC</h3>
+          <h3 className="text-xl font-bold text-white">Welcome to Homemade Products</h3>
           <p className="text-white/80 text-sm mt-1">Sign in to continue shopping</p>
         </div>
 
@@ -133,7 +131,7 @@ function AuthModal() {
 
             <button
               type="submit" disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-lg shadow-indigo-200 transition-all duration-300 disabled:opacity-60 flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-lg shadow-amber-200 transition-all duration-300 disabled:opacity-60 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -149,7 +147,7 @@ function AuthModal() {
               Don't have an account?{' '}
               <button
                 onClick={() => { closeAuthModal(); navigate('/signup'); }}
-                className="font-semibold text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+                className="font-semibold text-amber-600 hover:text-amber-700 underline underline-offset-2"
               >
                 Sign Up
               </button>
