@@ -89,6 +89,12 @@ app.post('/login', async (req, res) => {
     const results = await catalystApp.zcql().executeZCQLQuery(`SELECT ROWID, Name, Email, Phone, Password_Hash, Role FROM Users WHERE Email = '${email}'`);
     if (results.length === 0) return res.status(401).json({ success: false, message: 'No account found' });
     const u = results[0].Users;
+    // If account was created via Google, set the password now on first email/password login
+    if (u.Password_Hash === 'GOOGLE_AUTH') {
+      const hash = await bcrypt.hash(password, 10);
+      await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Password_Hash: hash });
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: u.Role } });
+    }
     if (!(await bcrypt.compare(password, u.Password_Hash))) return res.status(401).json({ success: false, message: 'Incorrect password' });
     res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: u.Role } });
   } catch (error) { console.error('Login error:', error); res.status(500).json({ success: false, message: 'Login failed' }); }

@@ -4,6 +4,16 @@ import { useApp } from '../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
+function InputField({ label, name, value, placeholder, required, type = 'text', half, onChange }) {
+  return (
+    <div className={half ? 'flex-1' : ''}>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}{required && <span className="text-red-400">*</span>}</label>
+      <input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder} required={required}
+        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none text-sm transition-all" />
+    </div>
+  );
+}
+
 function Checkout() {
   const { cartItems, cartTotal, clearCart, isAuthenticated, user, openAuthModal } = useApp();
   const navigate = useNavigate();
@@ -96,14 +106,6 @@ function Checkout() {
     );
   }
 
-  const InputField = ({ label, name, value, placeholder, required, type = 'text', half }) => (
-    <div className={half ? 'flex-1' : ''}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}{required && <span className="text-red-400">*</span>}</label>
-      <input type={type} name={name} value={value} onChange={handleChange} placeholder={placeholder} required={required}
-        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none text-sm transition-all" />
-    </div>
-  );
-
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
       {/* Breadcrumb */}
@@ -126,17 +128,17 @@ function Checkout() {
               </h2>
               <form onSubmit={(e) => { e.preventDefault(); setStep(2); }} className="space-y-4">
                 <div className="flex gap-4">
-                  <InputField label="Full Name" name="fullName" value={form.fullName} placeholder="Your name" required half />
-                  <InputField label="Phone" name="phone" value={form.phone} placeholder="+91 98765 43210" required type="tel" half />
+                  <InputField label="Full Name" name="fullName" value={form.fullName} placeholder="Your name" required half onChange={handleChange} />
+                  <InputField label="Phone" name="phone" value={form.phone} placeholder="+91 98765 43210" required type="tel" half onChange={handleChange} />
                 </div>
-                <InputField label="Email" name="email" value={form.email} placeholder="email@example.com" type="email" />
-                <InputField label="Address Line 1" name="addressLine1" value={form.addressLine1} placeholder="House/Flat No, Street" required />
-                <InputField label="Address Line 2" name="addressLine2" value={form.addressLine2} placeholder="Landmark (optional)" />
+                <InputField label="Email" name="email" value={form.email} placeholder="email@example.com" type="email" onChange={handleChange} />
+                <InputField label="Address Line 1" name="addressLine1" value={form.addressLine1} placeholder="House/Flat No, Street" required onChange={handleChange} />
+                <InputField label="Address Line 2" name="addressLine2" value={form.addressLine2} placeholder="Landmark (optional)" onChange={handleChange} />
                 <div className="flex gap-4">
-                  <InputField label="City" name="city" value={form.city} placeholder="City" required half />
-                  <InputField label="Pincode" name="pincode" value={form.pincode} placeholder="600001" required half />
+                  <InputField label="City" name="city" value={form.city} placeholder="City" required half onChange={handleChange} />
+                  <InputField label="Pincode" name="pincode" value={form.pincode} placeholder="600001" required half onChange={handleChange} />
                 </div>
-                <InputField label="State" name="state" value={form.state} placeholder="State" required />
+                <InputField label="State" name="state" value={form.state} placeholder="State" required onChange={handleChange} />
 
                 <label className="flex items-center gap-2 text-sm text-gray-600 mt-2 cursor-pointer">
                   <input type="checkbox" checked={form.sameAsBilling} onChange={() => setForm({ ...form, sameAsBilling: !form.sameAsBilling })} className="accent-amber-600 w-4 h-4" />
@@ -146,11 +148,11 @@ function Checkout() {
                 {!form.sameAsBilling && (
                   <div className="border-t border-gray-100 pt-4 mt-4 space-y-4">
                     <h3 className="text-lg font-bold text-gray-800">Billing Address</h3>
-                    <InputField label="Full Name" name="bFullName" value={form.bFullName} placeholder="Billing name" required />
-                    <InputField label="Address" name="bAddressLine1" value={form.bAddressLine1} placeholder="Billing address" required />
+                    <InputField label="Full Name" name="bFullName" value={form.bFullName} placeholder="Billing name" required onChange={handleChange} />
+                    <InputField label="Address" name="bAddressLine1" value={form.bAddressLine1} placeholder="Billing address" required onChange={handleChange} />
                     <div className="flex gap-4">
-                      <InputField label="City" name="bCity" value={form.bCity} placeholder="City" required half />
-                      <InputField label="Pincode" name="bPincode" value={form.bPincode} placeholder="Pincode" required half />
+                      <InputField label="City" name="bCity" value={form.bCity} placeholder="City" required half onChange={handleChange} />
+                      <InputField label="Pincode" name="bPincode" value={form.bPincode} placeholder="Pincode" required half onChange={handleChange} />
                     </div>
                   </div>
                 )}
