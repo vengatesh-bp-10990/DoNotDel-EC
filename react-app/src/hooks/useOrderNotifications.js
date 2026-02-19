@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
-const POLL_INTERVAL = 15000; // 15 seconds
-const NOTIFICATION_SOUND_FREQ = 880; // A5 note
+const POLL_INTERVAL = 10000; // 10 seconds
+const LS_KEY = 'admin_known_order_count';
+const LS_NOTIFS_KEY = 'admin_notifications';
 
-// Generate notification sound using Web Audio API
+// ─── Sound (Web Audio API — no external files) ───
 function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Play two-tone chime
     const playTone = (freq, startTime, duration) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -23,192 +22,169 @@ function playNotificationSound() {
       osc.start(startTime);
       osc.stop(startTime + duration);
     };
-
     const now = ctx.currentTime;
-    playTone(NOTIFICATION_SOUND_FREQ, now, 0.2);       // First chime
-    playTone(NOTIFICATION_SOUND_FREQ * 1.5, now + 0.2, 0.3); // Second chime (higher)
-    
-    // Clean up after sounds finish
+    playTone(880, now, 0.15);
+    playTone(1320, now + 0.18, 0.25);
     setTimeout(() => ctx.close(), 1000);
-  } catch (e) {
-    console.warn('Could not play notification sound:', e);
-  }
+  } catch (e) { /* sound not supported */ }
 }
 
-// Request browser notification permission
-async function requestNotificationPermission() {
-  if (!('Notification' in window)) return 'denied';
-  if (Notification.permission === 'granted') return 'granted';
-  if (Notification.permission !== 'denied') {
-    return await Notification.requestPermission();
-  }
-  return Notification.permission;
-}
-
-// Show native browser notification
-function showBrowserNotification(title, body, onClick) {
-  if (Notification.permission !== 'granted') return;
+// ─── Browser Notification ───
+function showBrowserNotification(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
-    const notification = new Notification(title, {
+    const n = new Notification(title, {
       body,
       icon: '🛒',
-      badge: '🛒',
-      tag: 'new-order',
+      tag: 'new-order-' + Date.now(),
       renotify: true,
-      requireInteraction: false,
     });
-    notification.onclick = () => {
-      window.focus();
-      if (onClick) onClick();
-      notification.close();
-    };
-    // Auto-close after 8 seconds
-    setTimeout(() => notification.close(), 8000);
-  } catch (e) {
-    console.warn('Browser notification failed:', e);
-  }
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 8000);
+  } catch (e) { /* notification not supported */ }
+}
+
+// ─── Persisted state helpers ───
+function getStoredCount() {
+  try { return parseInt(localStorage.getItem(LS_KEY) || '0'); } catch { return 0; }
+}
+function setStoredCount(c) {
+  try { localStorage.setItem(LS_KEY, String(c)); } catch {}
+}
+function getStoredNotifs() {
+  try { return JSON.parse(localStorage.getItem(LS_NOTIFS_KEY) || '[]'); } catch { return []; }
+}
+function setStoredNotifs(arr) {
+  try { localStorage.setItem(LS_NOTIFS_KEY, JSON.stringify(arr.slice(0, 30))); } catch {}
 }
 
 export function useOrderNotifications(isAdmin) {
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState(() => getStoredNotifs());
   const [unreadCount, setUnreadCount] = useState(0);
-  const [latestOrder, setLatestOrder] = useState(null); // for toast
-  const knownOrderIds = useRef(new Set());
-  const isFirstLoad = useRef(true);
+  const [latestOrder, setLatestOrder] = useState(null);
   const pollTimerRef = useRef(null);
   const onNewOrderCallbacks = useRef([]);
+  const hasInitialized = useRef(false);
 
-  // Subscribe to new order events
-  const onNewOrder = useCallback((callback) => {
-    onNewOrderCallbacks.current.push(callback);
-    return () => {
-      onNewOrderCallbacks.current = onNewOrderCallbacks.current.filter(cb => cb !== callback);
-    };
+  // Subscribe to new order events (for AdminOrders auto-refresh)
+  const onNewOrder = useCallback((cb) => {
+    onNewOrderCallbacks.current.push(cb);
+    return () => { onNewOrderCallbacks.current = onNewOrderCallbacks.current.filter(c => c !== cb); };
   }, []);
 
-  // Dismiss a notification
   const dismissNotification = useCallback((id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    setNotifications(prev => {
+      const next = prev.filter(n => n.id !== id);
+      setStoredNotifs(next);
+      return next;
+    });
     setUnreadCount(prev => Math.max(0, prev - 1));
   }, []);
 
-  // Clear all notifications
   const clearAll = useCallback(() => {
     setNotifications([]);
+    setStoredNotifs([]);
     setUnreadCount(0);
   }, []);
 
-  // Mark all as read
-  const markAllRead = useCallback(() => {
-    setUnreadCount(0);
-  }, []);
+  const markAllRead = useCallback(() => { setUnreadCount(0); }, []);
+  const dismissToast = useCallback(() => { setLatestOrder(null); }, []);
 
-  // Dismiss the toast
-  const dismissToast = useCallback(() => {
-    setLatestOrder(null);
-  }, []);
-
-  // Poll for new orders
+  // ─── Main poll function ───
   const checkForNewOrders = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/orders`);
+      const res = await fetch(`${API_BASE}/admin/order-count`);
       const data = await res.json();
-      if (!data.success || !data.data) return;
+      if (!data.success) return;
 
-      const currentIds = new Set(data.data.map(o => o.ROWID));
+      const currentCount = data.count || 0;
+      const storedCount = getStoredCount();
 
-      if (isFirstLoad.current) {
-        // First load — just record existing orders, don't notify
-        knownOrderIds.current = currentIds;
-        isFirstLoad.current = false;
-        return;
+      // First time ever — just store the count
+      if (!hasInitialized.current) {
+        hasInitialized.current = true;
+        if (storedCount === 0 && currentCount > 0) {
+          // First visit — store current count, don't notify
+          setStoredCount(currentCount);
+          return;
+        }
       }
 
-      // Find genuinely new orders
-      const newOrders = data.data.filter(o => !knownOrderIds.current.has(o.ROWID));
+      if (currentCount > storedCount && storedCount > 0) {
+        const newCount = currentCount - storedCount;
+        setStoredCount(currentCount);
 
-      if (newOrders.length > 0) {
-        // Update known IDs
-        knownOrderIds.current = currentIds;
+        // Fetch full order details for the new orders
+        try {
+          const ordersRes = await fetch(`${API_BASE}/admin/orders`);
+          const ordersData = await ordersRes.json();
+          if (ordersData.success && ordersData.data) {
+            // The newest orders are first (ORDER BY CREATEDTIME DESC)
+            const newOrders = ordersData.data.slice(0, newCount);
 
-        // Create notification entries
-        const newNotifs = newOrders.map(order => ({
-          id: order.ROWID,
-          orderId: order.ROWID,
-          customerName: order.customerName || 'Customer',
-          customerEmail: order.customerEmail || '',
-          total: parseFloat(order.Total_Amount || 0),
-          itemCount: (() => { try { return JSON.parse(order.Items || '[]').length; } catch { return 0; } })(),
-          time: new Date(),
-          status: order.Status || 'Pending',
-        }));
+            const newNotifs = newOrders.map(o => ({
+              id: o.ROWID,
+              orderId: o.ROWID,
+              customerName: o.customerName || o.customerEmail || 'Customer',
+              total: parseFloat(o.Total_Amount || 0),
+              itemCount: (() => { try { return (o.enrichedItems || JSON.parse(o.Items || '[]')).length; } catch { return 0; } })(),
+              time: new Date().toISOString(),
+              status: o.Status || 'Pending',
+            }));
 
-        setNotifications(prev => [...newNotifs, ...prev].slice(0, 50));
-        setUnreadCount(prev => prev + newOrders.length);
+            setNotifications(prev => {
+              const next = [...newNotifs, ...prev].slice(0, 30);
+              setStoredNotifs(next);
+              return next;
+            });
+            setUnreadCount(prev => prev + newCount);
 
-        // Show toast for the latest new order
-        setLatestOrder(newNotifs[0]);
-        setTimeout(() => setLatestOrder(null), 6000);
+            // Toast for latest
+            setLatestOrder(newNotifs[0]);
+            setTimeout(() => setLatestOrder(null), 6000);
 
-        // Play sound
-        playNotificationSound();
+            // Sound
+            playNotificationSound();
 
-        // Browser notification
-        if (newOrders.length === 1) {
-          const o = newNotifs[0];
-          showBrowserNotification(
-            '🛒 New Order Received!',
-            `${o.customerName || 'Customer'} placed an order for ₹${o.total.toFixed(0)} (${o.itemCount} item${o.itemCount !== 1 ? 's' : ''})`
-          );
-        } else {
-          showBrowserNotification(
-            `🛒 ${newOrders.length} New Orders!`,
-            `You have ${newOrders.length} new orders to process.`
-          );
-        }
+            // Browser notification
+            if (newCount === 1) {
+              const o = newNotifs[0];
+              showBrowserNotification(
+                '🛒 New Order Received!',
+                `${o.customerName} — ₹${o.total.toFixed(0)} (${o.itemCount} item${o.itemCount !== 1 ? 's' : ''})`
+              );
+            } else {
+              showBrowserNotification('🛒 New Orders!', `${newCount} new orders received.`);
+            }
 
-        // Notify subscribers (e.g., AdminOrders to auto-refresh)
-        onNewOrderCallbacks.current.forEach(cb => cb(newOrders));
-      } else {
-        // Update known IDs (orders might have been deleted)
-        knownOrderIds.current = currentIds;
+            // Notify subscribers (AdminOrders auto-refresh)
+            onNewOrderCallbacks.current.forEach(cb => cb(newOrders));
+          }
+        } catch (e) { /* fallback: still update count */ }
+      } else if (currentCount !== storedCount) {
+        // Orders deleted or count changed — sync
+        setStoredCount(currentCount);
       }
     } catch (e) {
-      console.warn('Order poll failed:', e);
+      console.warn('Order poll error:', e);
     }
   }, [isAdmin]);
 
-  // Request permission on mount
+  // Request browser notification permission
   useEffect(() => {
-    if (isAdmin) {
-      requestNotificationPermission();
+    if (isAdmin && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
     }
   }, [isAdmin]);
 
   // Start polling
   useEffect(() => {
     if (!isAdmin) return;
-
-    // Initial check
     checkForNewOrders();
-
-    // Poll every POLL_INTERVAL
     pollTimerRef.current = setInterval(checkForNewOrders, POLL_INTERVAL);
-
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
+    return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
   }, [isAdmin, checkForNewOrders]);
 
-  return {
-    notifications,
-    unreadCount,
-    latestOrder,
-    dismissNotification,
-    dismissToast,
-    clearAll,
-    markAllRead,
-    onNewOrder,
-  };
+  return { notifications, unreadCount, latestOrder, dismissNotification, dismissToast, clearAll, markAllRead, onNewOrder };
 }

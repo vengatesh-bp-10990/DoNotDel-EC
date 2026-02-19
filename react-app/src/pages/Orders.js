@@ -4,6 +4,48 @@ import { useApp } from '../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
+function DownloadInvoiceBtn({ orderId, small }) {
+  const [loading, setLoading] = useState(false);
+  const handleDownload = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/invoice/${orderId}`);
+      if (!res.ok) throw new Error('Failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice-${orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Invoice download failed:', err);
+      alert('Failed to download invoice. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button onClick={handleDownload} disabled={loading}
+      className={`inline-flex items-center gap-1.5 font-semibold rounded-xl transition-all ${
+        small
+          ? 'text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+          : 'text-sm px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
+      } disabled:opacity-50`}>
+      {loading ? (
+        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+      ) : (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+      )}
+      {loading ? 'Generating...' : 'Invoice'}
+    </button>
+  );
+}
+
 const STATUS_CONFIG = {
   Pending: { color: 'bg-yellow-100 text-yellow-700', icon: '⏳' },
   Confirmed: { color: 'bg-blue-100 text-blue-700', icon: '✓' },
@@ -120,7 +162,10 @@ function Orders() {
                     <span className="font-bold text-gray-800">₹{parseFloat(o.Total_Amount || 0).toFixed(0)}</span>
                     <span className="text-gray-400">{o.Payment_Method || 'COD'}</span>
                   </div>
-                  <span className="text-xs text-amber-600 font-medium">View Details →</span>
+                  <div className="flex items-center gap-3">
+                    <DownloadInvoiceBtn orderId={o.ROWID} small />
+                    <span className="text-xs text-amber-600 font-medium">View Details →</span>
+                  </div>
                 </div>
               </Link>
             );

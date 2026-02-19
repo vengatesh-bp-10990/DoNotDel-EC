@@ -175,7 +175,84 @@ app.get('/order/:orderId', async (req, res) => {
   } catch (error) { console.error('Get order error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
 });
 
+// ─── GET /invoice/:orderId ─── Generate PDF invoice using SmartBrowz template
+app.get('/invoice/:orderId', async (req, res) => {
+  try {
+    const catalystApp = initCatalyst(req);
+    const zcql = catalystApp.zcql();
+
+    // Fetch order
+    const orderRows = await zcql.executeZCQLQuery(`SELECT * FROM Orders WHERE ROWID = '${req.params.orderId}'`);
+    if (orderRows.length === 0) return res.status(404).json({ success: false, message: 'Order not found' });
+    const order = orderRows[0].Orders || orderRows[0];
+
+    // Fetch customer
+    let customerName = 'Customer';
+    try {
+      const userRows = await zcql.executeZCQLQuery(`SELECT Name, Email FROM Users WHERE ROWID = '${order.User_ID}'`);
+      if (userRows.length > 0) customerName = (userRows[0].Users || userRows[0]).Name || 'Customer';
+    } catch (e) { /* fallback */ }
+
+    // Parse items
+    let items = [];
+    try { items = JSON.parse(order.Items || '[]'); } catch {}
+
+    const subTotal = items.reduce((s, i) => s + (parseFloat(i.price || 0) * (i.qty || 1)), 0);
+    const total = parseFloat(order.Total_Amount || subTotal);
+    const shippingCharge = 0;
+    const tax = Math.max(0, total - subTotal - shippingCharge);
+
+    // Build template data
+    const templateData = {
+      customer_name: customerName,
+      order_id: order.ROWID,
+      date: order.CREATEDTIME
+        ? new Date(order.CREATEDTIME).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+        : new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
+      products: items.map(i => ({
+        name: i.name || 'Product',
+        unit: 'Qty',
+        quantity: String(i.qty || 1),
+        price: (parseFloat(i.price || 0) * (i.qty || 1)).toFixed(2),
+      })),
+      sub_total: subTotal.toFixed(2),
+      shipment_charge: shippingCharge.toFixed(2),
+      tax: tax.toFixed(2),
+      total: total.toFixed(2),
+    };
+
+    // Generate PDF using SmartBrowz template
+    const TEMPLATE_ID = '644000000005024';
+    const smartbrowz = catalystApp.smartbrowz();
+    const pdfStream = await smartbrowz.generateFromTemplate(TEMPLATE_ID, {
+      template_data: templateData,
+      output_options: { output_type: 'pdf' },
+      pdf_options: { format: 'A4', print_background: true },
+    });
+
+    // Stream the PDF to client
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice-${order.ROWID}.pdf"`);
+    pdfStream.pipe(res);
+  } catch (error) {
+    console.error('Invoice PDF error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to generate invoice' });
+  }
+});
+
 // ──────── ADMIN ────────
+
+// ─── GET /admin/order-count ─── (lightweight polling endpoint)
+app.get('/admin/order-count', async (req, res) => {
+  try {
+    const catalystApp = initCatalyst(req);
+    const data = await catalystApp.zcql().executeZCQLQuery('SELECT ROWID, CREATEDTIME, Total_Amount, Status FROM Orders ORDER BY CREATEDTIME DESC LIMIT 1');
+    const countData = await catalystApp.zcql().executeZCQLQuery('SELECT COUNT(ROWID) as cnt FROM Orders');
+    const count = parseInt((countData[0]?.Orders?.cnt || countData[0]?.cnt || 0));
+    const latest = data[0]?.Orders || data[0] || null;
+    res.json({ success: true, count, latestId: latest?.ROWID || null, latestTime: latest?.CREATEDTIME || null, latestAmount: latest?.Total_Amount || null });
+  } catch (error) { res.status(500).json({ success: false, count: 0 }); }
+});
 
 // ─── GET /admin/orders ───
 app.get('/admin/orders', async (req, res) => {
