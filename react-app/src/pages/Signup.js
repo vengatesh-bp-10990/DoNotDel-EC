@@ -97,7 +97,7 @@ function Signup() {
               Create Account
             </h2>
             <p className="text-gray-400 mt-2 text-sm sm:text-base">
-              Sign up to start your shopping journey
+              Click <strong className="text-teal-600">"Sign up"</strong> below to create your free account
             </p>
           </div>
 
