@@ -40,6 +40,7 @@ function AppProvider({ children }) {
 
   // Catalyst ZAID (client_id) for signinWithJwt
   const CATALYST_CLIENT_ID = '50039032514';
+  const CATALYST_SCOPES = 'ZOHOCATALYST.tables.rows.ALL,ZOHOCATALYST.notifications.web,ZOHOCATALYST.cache.READ,ZOHOCATALYST.files.ALL';
 
   // Enable Catalyst push notifications
   const enablePush = useCallback(() => {
@@ -106,6 +107,7 @@ function AppProvider({ children }) {
           console.log('Restoring Catalyst session with JWT...');
           cat.auth.signinWithJwt(() => Promise.resolve({
             client_id: CATALYST_CLIENT_ID,
+            scopes: CATALYST_SCOPES,
             jwt_token: storedJwt
           }))
             .then(() => { console.log('Catalyst session restored'); enablePush(); })
@@ -144,6 +146,7 @@ function AppProvider({ children }) {
       console.log('Establishing Catalyst JWT session...');
       await cat.auth.signinWithJwt(() => Promise.resolve({
         client_id: CATALYST_CLIENT_ID,
+        scopes: CATALYST_SCOPES,
         jwt_token: tokenStr
       }));
       console.log('Catalyst JWT session established');
