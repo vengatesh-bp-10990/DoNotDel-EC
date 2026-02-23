@@ -147,6 +147,20 @@ function newProductEmail(customerName, product) {
   `);
 }
 
+function welcomeEmail(customerName) {
+  return emailWrapper(`
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111;">🎉 Welcome to ${STORE_NAME}!</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:14px;">Hi ${customerName}, thanks for joining us! We're thrilled to have you.</p>
+    <div style="background:#f9fafb;border-radius:12px;padding:24px;margin-bottom:24px;text-align:center;">
+      <p style="margin:0 0 8px;font-size:16px;font-weight:700;color:#111;">Your account is ready 🚀</p>
+      <p style="margin:0;color:#6b7280;font-size:14px;line-height:1.6;">Browse our handmade collection, place orders, and track them in real-time. We can't wait to serve you!</p>
+    </div>
+    <div style="text-align:center;">
+      <a href="${STORE_URL}" style="display:inline-block;background:#f59e0b;color:#fff;padding:12px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Start Shopping →</a>
+    </div>
+  `);
+}
+
 // ─── POST /google-auth ───
 app.post('/google-auth', async (req, res) => {
   try {
@@ -169,7 +183,9 @@ app.post('/google-auth', async (req, res) => {
     }
     const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : 'Customer';
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name || email.split('@')[0], Email: email, Phone: '', Password_Hash: 'GOOGLE_AUTH', Role: role });
-    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: name || email.split('@')[0], Email: email, Phone: '', Role: role } });
+    const displayName = name || email.split('@')[0];
+    await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(displayName));
+    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: displayName, Email: email, Phone: '', Role: role } });
   } catch (error) { console.error('Google auth error:', error); res.status(500).json({ success: false, message: 'Google auth failed' }); }
 });
 
@@ -188,6 +204,7 @@ app.post('/signup', async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const role = email === ADMIN_EMAIL ? 'Admin' : 'Customer';
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name, Email: email, Phone: phone || '', Password_Hash: hash, Role: role });
+    await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(name));
     res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
   } catch (error) { console.error('Signup error:', error); res.status(500).json({ success: false, message: 'Signup failed' }); }
 });
