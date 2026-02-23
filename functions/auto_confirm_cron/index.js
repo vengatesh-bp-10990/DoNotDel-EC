@@ -2,7 +2,7 @@
 
 const catalyst = require('zcatalyst-sdk-node');
 
-const SENDER_EMAIL = 'vengi9360@gmail.com';
+const SENDER_EMAIL = 'vengatesh.bp@zohocorp.com';
 const STORE_NAME = 'Homemade Products';
 const STORE_URL = 'https://homemade.onslate.in';
 const AUTO_CONFIRM_MINUTES = 1;
