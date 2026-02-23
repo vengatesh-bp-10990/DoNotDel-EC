@@ -206,18 +206,8 @@ app.post('/signup', async (req, res) => {
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name, Email: email, Phone: phone || '', Password_Hash: hash, Role: role });
     await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(name));
 
-    // Register user in Catalyst Authentication so they appear under Authentication > Users
-    // This enables push notifications for the user
-    try {
-      await catalystApp.userManagement().registerUser(
-        { platform_type: 'web' },
-        { first_name: name, last_name: '', email_id: email }
-      );
-      console.log(`Catalyst Auth: Registered ${email}`);
-    } catch (authErr) {
-      // Don't fail the signup if Catalyst Auth registration fails (e.g. user already exists in Auth)
-      console.log(`Catalyst Auth registration note for ${email}:`, authErr.message || authErr);
-    }
+    // Register in Catalyst Auth (enables push notifications)
+    await ensureCatalystAuthUser(catalystApp, email, name);
 
     res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
   } catch (error) { console.error('Signup error:', error); res.status(500).json({ success: false, message: 'Signup failed' }); }
@@ -237,11 +227,13 @@ app.post('/login', async (req, res) => {
       const hash = await bcrypt.hash(password, 10);
       const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
       await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Password_Hash: hash, Role: role });
+      await ensureCatalystAuthUser(catalystApp, email, u.Name);
       return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
     }
     if (!(await bcrypt.compare(password, u.Password_Hash))) return res.status(401).json({ success: false, message: 'Incorrect password' });
     const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
     if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
+    await ensureCatalystAuthUser(catalystApp, email, u.Name);
     res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
   } catch (error) { console.error('Login error:', error); res.status(500).json({ success: false, message: 'Login failed' }); }
 });
@@ -280,6 +272,23 @@ async function sendPushNotification(catalystApp, message, emails) {
     await catalystApp.pushNotification().web().sendNotification(msgStr, emails);
     console.log(`Push sent to ${emails.join(', ')}: ${msgStr.substring(0, 100)}`);
   } catch (e) { console.error('Push notification error:', e.message); }
+}
+
+// ─── Catalyst Auth Registration Helper ───
+// Registers a user in Catalyst Authentication (required for push notifications)
+async function ensureCatalystAuthUser(catalystApp, email, firstName) {
+  try {
+    await catalystApp.userManagement().registerUser(
+      { platform_type: 'web', redirect_url: STORE_URL + '/login' },
+      { first_name: firstName || email.split('@')[0], last_name: '', email_id: email }
+    );
+    console.log(`Catalyst Auth: Registered ${email}`);
+    return true;
+  } catch (e) {
+    // User may already be registered — that's fine
+    console.log(`Catalyst Auth note for ${email}:`, e.message || e);
+    return false;
+  }
 }
 
 // ─── PUT /profile ───
@@ -513,6 +522,15 @@ app.put('/admin/order-items', async (req, res) => {
     await catalystApp.datastore().table('Orders').updateRow({ ROWID: orderId, Items: JSON.stringify(items), Total_Amount: newTotal });
     res.json({ success: true, message: 'Order items updated', total: newTotal });
   } catch (error) { console.error('Update order items error:', error); res.status(500).json({ success: false, message: 'Failed' }); }
+});
+
+// ─── POST /admin/setup-auth ─── Register admin in Catalyst Auth (one-time)
+app.post('/admin/setup-auth', async (req, res) => {
+  try {
+    const catalystApp = initCatalyst(req);
+    const registered = await ensureCatalystAuthUser(catalystApp, ADMIN_EMAIL, 'Admin');
+    res.json({ success: true, message: `Admin auth setup ${registered ? 'completed' : 'already done'}` });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 // ──────── CATEGORY CRUD ────────

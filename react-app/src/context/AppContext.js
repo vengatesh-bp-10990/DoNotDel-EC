@@ -102,7 +102,9 @@ function AppProvider({ children }) {
   const loginUser = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('ec_user', JSON.stringify(userData));
-  }, []);
+    // Try to enable push notifications for this session
+    enablePush();
+  }, [enablePush]);
 
   const logoutUser = useCallback(() => {
     setUser(null);
