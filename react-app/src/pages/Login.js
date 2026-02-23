@@ -22,6 +22,18 @@ function Login() {
         window.catalyst.auth.signIn('catalyst-login-container', {
           service_url: '/'
         });
+        // Disable iframe internal scroll once it's injected
+        const fixIframe = () => {
+          const iframe = containerRef.current?.querySelector('iframe');
+          if (iframe) {
+            iframe.setAttribute('scrolling', 'no');
+            iframe.style.overflow = 'hidden';
+            iframe.style.minHeight = '480px';
+          } else {
+            setTimeout(fixIframe, 200);
+          }
+        };
+        setTimeout(fixIframe, 300);
       } else {
         setTimeout(initSignIn, 200);
       }
