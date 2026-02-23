@@ -106,7 +106,7 @@ function Navbar() {
               </div>
             ) : (
               <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
-                <button onClick={openAuthModal} className="sm:hidden px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 shadow-sm">Sign In</button>
+                <button onClick={() => { openAuthModal(); }} className="sm:hidden px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 shadow-sm">Sign In</button>
                 <Link to="/login" className="hidden sm:inline-flex px-5 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-sm hover:shadow-md transition-all">Sign In</Link>
               </div>
             )}

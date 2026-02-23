@@ -78,28 +78,36 @@ function Login() {
           </div>
 
           {/* Header */}
-          <div className="text-center lg:text-left mb-8">
+          <div className="text-center lg:text-left mb-6">
             <h2 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
               Sign In
             </h2>
             <p className="text-gray-400 mt-2 text-sm sm:text-base">
-              Sign in or create an account to continue
+              Sign in or create a new account to continue
             </p>
           </div>
 
           {/* Catalyst Embedded Sign-In Container */}
-          <div
-            id="catalyst-login-container"
-            ref={containerRef}
-            className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 min-h-[300px] flex items-center justify-center"
-          >
-            <div className="text-center">
-              <svg className="w-8 h-8 animate-spin text-amber-500 mx-auto mb-3" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-              </svg>
-              <p className="text-sm text-gray-400">Loading sign-in form...</p>
-            </div>
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            <div
+              id="catalyst-login-container"
+              ref={containerRef}
+              className="min-h-[350px]"
+              style={{ display: 'flex', flexDirection: 'column' }}
+            />
+          </div>
+
+          {/* Feature badges */}
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            {[
+              { icon: '🔒', label: 'Secure Login' },
+              { icon: '🌐', label: 'Google Sign-In' },
+              { icon: '✨', label: 'Free Sign-Up' },
+            ].map((badge, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-100 rounded-full text-xs text-gray-500 font-medium">
+                <span>{badge.icon}</span> {badge.label}
+              </span>
+            ))}
           </div>
         </div>
       </div>
