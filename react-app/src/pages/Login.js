@@ -88,11 +88,11 @@ function Login() {
           </div>
 
           {/* Catalyst Embedded Sign-In Container */}
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100">
             <div
               id="catalyst-login-container"
               ref={containerRef}
-              className="min-h-[350px]"
+              className="min-h-[480px]"
               style={{ display: 'flex', flexDirection: 'column' }}
             />
           </div>
