@@ -13,13 +13,14 @@ function Signup() {
     if (isAuthenticated) navigate(user?.Role === 'Admin' ? '/admin' : '/', { replace: true });
   }, [isAuthenticated, user, navigate]);
 
-  // Render Catalyst embedded sign-up form
+  // Render Catalyst embedded sign-in/sign-up form
+  // The Catalyst signIn form handles both login and new user signup when Public Signup is enabled
   useEffect(() => {
     if (signUpInitRef.current || isAuthenticated) return;
     const initSignUp = () => {
-      if (window.catalyst?.auth?.signUp && containerRef.current) {
+      if (window.catalyst?.auth?.signIn && containerRef.current) {
         signUpInitRef.current = true;
-        window.catalyst.auth.signUp('catalyst-signup-container', {
+        window.catalyst.auth.signIn('catalyst-signup-container', {
           service_url: '/'
         });
         // Disable iframe internal scroll once it's injected
