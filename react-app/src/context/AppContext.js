@@ -128,6 +128,69 @@ function AppProvider({ children }) {
     }
   });
 
+  /* ─── Location State ─── */
+  const [location, setLocationState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ec_location');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  const setLocation = useCallback((loc) => {
+    setLocationState(loc);
+    if (loc) localStorage.setItem('ec_location', JSON.stringify(loc));
+    else localStorage.removeItem('ec_location');
+  }, []);
+
+  // Lookup pincode from India Post API
+  const lookupPincode = useCallback(async (pincode) => {
+    if (!pincode || pincode.length !== 6) return null;
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await res.json();
+      if (data?.[0]?.Status === 'Success' && data[0].PostOffice?.length > 0) {
+        const po = data[0].PostOffice[0];
+        return {
+          pincode,
+          city: po.District || po.Division || '',
+          state: po.State || '',
+          area: po.Name || '',
+          postOffices: data[0].PostOffice,
+        };
+      }
+    } catch (e) { console.error('Pincode lookup error:', e); }
+    return null;
+  }, []);
+
+  // Auto-detect location on mount via geolocation → reverse geocode
+  useEffect(() => {
+    if (location) return; // Already have saved location
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const data = await res.json();
+          const addr = data?.address || {};
+          const pincode = addr.postcode || '';
+          const city = addr.city || addr.town || addr.village || addr.county || addr.state_district || '';
+          const state = addr.state || '';
+
+          if (pincode) {
+            setLocation({ pincode, city, state, lat: latitude, lng: longitude });
+          }
+        } catch (e) { console.error('Reverse geocode error:', e); }
+      },
+      () => { /* User denied geolocation — that's fine */ },
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }, [location, setLocation]);
+
   useEffect(() => {
     localStorage.setItem('cartItems', JSON.stringify(cartItems));
   }, [cartItems]);
@@ -195,6 +258,10 @@ function AppProvider({ children }) {
         removeFromCart,
         updateQuantity,
         clearCart,
+        // Location
+        location,
+        setLocation,
+        lookupPincode,
       }}
     >
       {children}

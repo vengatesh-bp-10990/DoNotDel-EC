@@ -14,12 +14,13 @@ function Signup() {
   }, [isAuthenticated, user, navigate]);
 
   // Render Catalyst embedded sign-in form (handles signup when Public Signup is enabled)
+  // Render Catalyst embedded sign-up form
   useEffect(() => {
     if (signInInitRef.current || isAuthenticated) return;
-    const initSignIn = () => {
-      if (window.catalyst?.auth?.signIn && containerRef.current) {
+    const initSignUp = () => {
+      if (window.catalyst?.auth?.signUp && containerRef.current) {
         signInInitRef.current = true;
-        window.catalyst.auth.signIn('catalyst-signup-container', {
+        window.catalyst.auth.signUp('catalyst-signup-container', {
           service_url: '/'
         });
         // Disable iframe internal scroll once it's injected
@@ -35,10 +36,10 @@ function Signup() {
         };
         setTimeout(fixIframe, 300);
       } else {
-        setTimeout(initSignIn, 200);
+        setTimeout(initSignUp, 200);
       }
     };
-    setTimeout(initSignIn, 300);
+    setTimeout(initSignUp, 300);
   }, [isAuthenticated]);
 
   return (
