@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
-const FALLBACK_POLL_INTERVAL = 60000; // 60s fallback (push notifications are primary)
 
 function DownloadInvoiceBtn({ orderId, small }) {
   const [loading, setLoading] = useState(false);
@@ -63,7 +62,6 @@ function Orders() {
   const [filter, setFilter] = useState('all');
   const [updatedOrderId, setUpdatedOrderId] = useState(null);
   const prevStatusMapRef = useRef({});
-  const pollRef = useRef(null);
 
   const fetchOrders = useCallback(() => {
     if (!isAuthenticated || !user?.ROWID) return Promise.resolve();
@@ -103,13 +101,6 @@ function Orders() {
     };
     window.addEventListener('catalyst-push', handlePush);
     return () => window.removeEventListener('catalyst-push', handlePush);
-  }, [isAuthenticated, user, fetchOrders]);
-
-  // Slow fallback poll (in case push is unavailable)
-  useEffect(() => {
-    if (!isAuthenticated || !user?.ROWID) return;
-    pollRef.current = setInterval(fetchOrders, FALLBACK_POLL_INTERVAL);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [isAuthenticated, user, fetchOrders]);
 
   if (!isAuthenticated) {

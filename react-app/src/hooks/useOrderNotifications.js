@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
-const POLL_INTERVAL = 60000; // 60s fallback (push notifications are primary)
 const LS_KEY = 'admin_known_order_count';
 const LS_NOTIFS_KEY = 'admin_notifications';
 const LS_INIT_KEY = 'admin_notif_initialized';
@@ -69,7 +68,6 @@ export function useOrderNotifications(isAdmin) {
   const [notifications, setNotifications] = useState(() => getStoredNotifs());
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestOrder, setLatestOrder] = useState(null);
-  const pollTimerRef = useRef(null);
   const onNewOrderCallbacks = useRef([]);
 
   // Subscribe to new order events (for AdminOrders auto-refresh)
@@ -202,13 +200,10 @@ export function useOrderNotifications(isAdmin) {
     return () => window.removeEventListener('catalyst-push', handlePush);
   }, [isAdmin, checkForNewOrders]);
 
-  // Start polling (slow fallback)
+  // Initial load only (no polling — push notifications handle real-time updates)
   useEffect(() => {
     if (!isAdmin) return;
-    console.log('[Notif] Starting poll, interval:', POLL_INTERVAL);
     checkForNewOrders();
-    pollTimerRef.current = setInterval(checkForNewOrders, POLL_INTERVAL);
-    return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
   }, [isAdmin, checkForNewOrders]);
 
   return { notifications, unreadCount, latestOrder, dismissNotification, dismissToast, clearAll, markAllRead, onNewOrder };

@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
-const FALLBACK_POLL_INTERVAL = 60000; // 60s fallback (push notifications are primary)
 
 function DownloadInvoiceBtn({ orderId }) {
   const [loading, setLoading] = useState(false);
@@ -75,7 +74,6 @@ function OrderTracking() {
   const [statusFlash, setStatusFlash] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
   const prevStatusRef = useRef(null);
-  const pollRef = useRef(null);
 
   // Fetch order data
   const fetchOrder = useCallback(() => {
@@ -116,13 +114,6 @@ function OrderTracking() {
     };
     window.addEventListener('catalyst-push', handlePush);
     return () => window.removeEventListener('catalyst-push', handlePush);
-  }, [id, isAuthenticated, fetchOrder]);
-
-  // Slow fallback poll
-  useEffect(() => {
-    if (!id || !isAuthenticated) return;
-    pollRef.current = setInterval(fetchOrder, FALLBACK_POLL_INTERVAL);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [id, isAuthenticated, fetchOrder]);
 
   if (!isAuthenticated) {

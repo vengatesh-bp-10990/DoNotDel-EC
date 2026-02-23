@@ -83,8 +83,14 @@ function AppProvider({ children }) {
           await syncUser(catUser);
           enablePush();
         } else if (!cancelled) {
-          setUser(null);
-          localStorage.removeItem('ec_user');
+          // Don't clear user if they logged in via custom form (localStorage)
+          const savedUser = localStorage.getItem('ec_user');
+          if (!savedUser) {
+            setUser(null);
+          } else {
+            // User has a custom-login session — try enabling push anyway
+            enablePush();
+          }
         }
       } catch (e) {
         console.log('Catalyst auth check:', e.message || 'Not authenticated');
