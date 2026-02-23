@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
 function Profile() {
-  const { user, isAuthenticated, loginUser, openAuthModal } = useApp();
+  const { user, isAuthenticated, loginUser, logoutUser, openAuthModal } = useApp();
+  const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: user?.Name || '', phone: user?.Phone || '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   if (!isAuthenticated) {
     return (
@@ -135,6 +139,80 @@ function Profile() {
             <p className="text-sm text-gray-400">Browse our products</p>
           </div>
         </Link>
+      </div>
+
+      {/* ─── Delete Account Section ─── */}
+      <div className="mt-8 bg-white rounded-2xl shadow-sm border border-red-100 overflow-hidden">
+        <div className="p-6">
+          <h3 className="text-lg font-bold text-red-600 mb-2 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+            Danger Zone
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Permanently delete your account and all associated data including orders, profile information, and push subscriptions. This action <strong>cannot be undone</strong>.
+          </p>
+
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="bg-white border-2 border-red-300 text-red-600 hover:bg-red-50 font-semibold py-2.5 px-6 rounded-xl transition-all text-sm"
+            >
+              Delete My Account
+            </button>
+          ) : (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-5 space-y-4">
+              <p className="text-sm font-medium text-red-700">
+                Are you sure? Type <strong>DELETE</strong> to confirm:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Type DELETE"
+                className="w-full max-w-xs px-4 py-2.5 rounded-xl border border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none text-sm"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={async () => {
+                    if (deleteConfirmText !== 'DELETE') return;
+                    setDeleting(true);
+                    try {
+                      const res = await fetch(`${API_BASE}/account`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: user.ROWID, email: user.Email }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        // Clear everything and redirect
+                        localStorage.clear();
+                        logoutUser();
+                        navigate('/', { replace: true });
+                      } else {
+                        setMsg(data.message || 'Deletion failed');
+                        setDeleting(false);
+                      }
+                    } catch {
+                      setMsg('Network error. Please try again.');
+                      setDeleting(false);
+                    }
+                  }}
+                  disabled={deleteConfirmText !== 'DELETE' || deleting}
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-6 rounded-xl transition-all text-sm"
+                >
+                  {deleting ? 'Deleting...' : 'Permanently Delete'}
+                </button>
+                <button
+                  onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); }}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 px-6 rounded-xl transition-all text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

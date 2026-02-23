@@ -240,7 +240,17 @@ app.post('/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
     const catalystApp = initCatalyst(req);
     const results = await catalystApp.zcql().executeZCQLQuery(`SELECT ROWID, Name, Email, Phone, Password_Hash, Role FROM Users WHERE Email = '${email}'`);
-    if (results.length === 0) return res.status(401).json({ success: false, message: 'No account found' });
+    if (results.length === 0) {
+      // Auto-create admin account on first login attempt
+      if (email.toLowerCase() === ADMIN_EMAIL) {
+        const hash = await bcrypt.hash(password, 10);
+        const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: 'Admin', Email: email, Phone: '', Password_Hash: hash, Role: 'Admin' });
+        await ensureCatalystAuthUser(catalystApp, email, 'Admin');
+        const jwt_token = await generateCatalystToken(catalystApp, email, 'Admin');
+        return res.json({ success: true, user: { ROWID: newUser.ROWID, Name: 'Admin', Email: email, Phone: '', Role: 'Admin' }, jwt_token });
+      }
+      return res.status(401).json({ success: false, message: 'No account found. Please sign up first.' });
+    }
     const u = results[0].Users;
     // If account was created via Google, set the password now on first email/password login
     if (u.Password_Hash === 'GOOGLE_AUTH') {
@@ -486,6 +496,55 @@ app.put('/profile', async (req, res) => {
     await catalystApp.datastore().table('Users').updateRow(row);
     res.json({ success: true, message: 'Profile updated' });
   } catch (error) { console.error('Profile error:', error); res.status(500).json({ success: false, message: 'Update failed' }); }
+});
+
+// ─── DELETE /account ── Permanently delete user account and all associated data ───
+app.delete('/account', async (req, res) => {
+  try {
+    const { userId, email } = req.body;
+    if (!userId || !email) return res.status(400).json({ success: false, message: 'userId and email required' });
+
+    const catalystApp = initCatalyst(req);
+    const zcql = catalystApp.zcql();
+    const ds = catalystApp.datastore();
+
+    // 1. Delete all orders for this user
+    try {
+      const orders = await zcql.executeZCQLQuery(`SELECT ROWID FROM Orders WHERE User_ID = '${userId}'`);
+      if (orders.length > 0) {
+        const orderIds = orders.map(r => (r.Orders || r).ROWID);
+        // Delete in batches (Catalyst limit)
+        for (const id of orderIds) {
+          try { await ds.table('Orders').deleteRow(id); } catch (e) { console.log(`Delete order ${id}:`, e.message); }
+        }
+        console.log(`Deleted ${orderIds.length} orders for user ${userId}`);
+      }
+    } catch (e) { console.log('Order deletion note:', e.message); }
+
+    // 2. Delete user row from Datastore
+    try {
+      await ds.table('Users').deleteRow(userId);
+      console.log(`Deleted user ${userId} (${email}) from Datastore`);
+    } catch (e) { console.error('User delete error:', e.message); }
+
+    // 3. Remove push subscription
+    pushSubscriptions.delete(email.toLowerCase());
+
+    // 4. Try to delete from Catalyst Auth (best effort)
+    try {
+      const authUsers = await catalystApp.userManagement().getAllUsers();
+      const authUser = authUsers?.find(u => (u.email_id || u.email || '').toLowerCase() === email.toLowerCase());
+      if (authUser) {
+        await catalystApp.userManagement().deleteUser(authUser.user_id || authUser.userId);
+        console.log(`Deleted ${email} from Catalyst Auth`);
+      }
+    } catch (e) { console.log('Auth user deletion note:', e.message); }
+
+    res.json({ success: true, message: 'Account deleted permanently' });
+  } catch (error) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ success: false, message: 'Account deletion failed. Please try again.' });
+  }
 });
 
 // ─── GET /products (with Cache) ───
