@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 const AppContext = createContext();
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
@@ -7,24 +7,97 @@ function AppProvider({ children }) {
   /* ─── User State ─── */
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const pushInitRef = useRef(false);
 
   /* ─── Auth Modal State ─── */
   const [showAuthModal, setShowAuthModal] = useState(false);
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
-  // Restore user session from localStorage on mount
-  useEffect(() => {
+  // Sync Catalyst user to our Datastore
+  const syncUser = useCallback(async (catUser) => {
     try {
-      const saved = localStorage.getItem('ec_user');
-      if (saved) {
-        setUser(JSON.parse(saved));
+      const email = catUser.email_id || catUser.emailid || catUser.email;
+      const firstName = catUser.first_name || catUser.firstName || '';
+      const lastName = catUser.last_name || catUser.lastName || '';
+      const name = `${firstName} ${lastName}`.trim() || email?.split('@')[0] || 'User';
+      const catalystUserId = catUser.user_id || catUser.userid || catUser.userId || '';
+      if (!email) throw new Error('No email from Catalyst auth');
+      const res = await fetch(`${API_BASE}/auth/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, catalystUserId }),
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        setUser(data.user);
+        localStorage.setItem('ec_user', JSON.stringify(data.user));
+        return data.user;
       }
-    } catch {
-      localStorage.removeItem('ec_user');
-    }
-    setAuthLoading(false);
+    } catch (e) { console.error('Sync user error:', e); }
+    return null;
   }, []);
+
+  // Enable Catalyst push notifications
+  const enablePush = useCallback(() => {
+    if (pushInitRef.current) return;
+    const cat = window.catalyst;
+    if (!cat?.notification) return;
+    pushInitRef.current = true;
+    try {
+      cat.notification.enableNotification().then(() => {
+        cat.notification.messageHandler = (msg) => {
+          try {
+            const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
+            window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
+          } catch {
+            window.dispatchEvent(new CustomEvent('catalyst-push', { detail: { message: msg } }));
+          }
+        };
+        console.log('Push notifications enabled');
+      }).catch(e => console.error('Push enable failed:', e));
+    } catch (e) { console.error('Push notification error:', e); }
+  }, []);
+
+  // Check Catalyst auth on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function checkAuth() {
+      // Restore from localStorage immediately (fast paint)
+      try {
+        const saved = localStorage.getItem('ec_user');
+        if (saved && !cancelled) setUser(JSON.parse(saved));
+      } catch { localStorage.removeItem('ec_user'); }
+
+      const cat = window.catalyst;
+      if (!cat?.auth) { if (!cancelled) setAuthLoading(false); return; }
+      try {
+        let catUser = null;
+        if (typeof cat.auth.isUserAuthenticated === 'function') {
+          catUser = await cat.auth.isUserAuthenticated();
+        }
+        if (!catUser && typeof cat.auth.getCurrentUser === 'function') {
+          catUser = await cat.auth.getCurrentUser();
+        }
+        if (catUser && !cancelled) {
+          await syncUser(catUser);
+          enablePush();
+        } else if (!cancelled) {
+          setUser(null);
+          localStorage.removeItem('ec_user');
+        }
+      } catch (e) {
+        console.log('Catalyst auth check:', e.message || 'Not authenticated');
+      }
+      if (!cancelled) setAuthLoading(false);
+    }
+    const waitForSDK = () => {
+      if (window.catalyst?.auth) { checkAuth(); }
+      else { setTimeout(waitForSDK, 150); }
+    };
+    setTimeout(waitForSDK, 200);
+    return () => { cancelled = true; };
+  }, [syncUser, enablePush]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
@@ -36,43 +109,14 @@ function AppProvider({ children }) {
     localStorage.removeItem('ec_user');
     localStorage.removeItem('cartItems');
     setCartItems([]);
+    pushInitRef.current = false;
+    try {
+      if (window.catalyst?.auth?.signOut) {
+        window.catalyst.auth.signOut(window.location.origin + '/');
+        return;
+      }
+    } catch (e) { console.error('Catalyst signOut error:', e); }
   }, []);
-
-  // Custom auth helpers
-  const signupUser = useCallback(async ({ name, email, phone, password }) => {
-    const res = await fetch(`${API_BASE}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, phone, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Signup failed');
-    return data;
-  }, []);
-
-  const loginWithCredentials = useCallback(async ({ email, password }) => {
-    const res = await fetch(`${API_BASE}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Login failed');
-    loginUser(data.user);
-    return data;
-  }, [loginUser]);
-
-  const googleSignIn = useCallback(async (credential) => {
-    const res = await fetch(`${API_BASE}/google-auth`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Google sign-in failed');
-    loginUser(data.user);
-    return data;
-  }, [loginUser]);
 
   /* ─── Cart State ─── */
   const [cartItems, setCartItems] = useState(() => {
@@ -139,9 +183,6 @@ function AppProvider({ children }) {
         authLoading,
         loginUser,
         logoutUser,
-        signupUser,
-        loginWithCredentials,
-        googleSignIn,
         // Auth Modal
         showAuthModal,
         openAuthModal,

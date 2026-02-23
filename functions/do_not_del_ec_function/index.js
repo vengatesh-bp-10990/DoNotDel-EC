@@ -232,6 +232,42 @@ app.post('/login', async (req, res) => {
   } catch (error) { console.error('Login error:', error); res.status(500).json({ success: false, message: 'Login failed' }); }
 });
 
+// ─── POST /auth/sync ── Sync Catalyst Auth user to Datastore ───
+app.post('/auth/sync', async (req, res) => {
+  try {
+    const { email, name, catalystUserId } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email required' });
+    const catalystApp = initCatalyst(req);
+    const zcql = catalystApp.zcql();
+    const existing = await zcql.executeZCQLQuery(`SELECT ROWID, Name, Email, Phone, Role FROM Users WHERE Email = '${email}'`);
+    if (existing.length > 0) {
+      const u = existing[0].Users;
+      const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : (u.Role || 'Customer');
+      if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
+    }
+    // Create new user in Datastore
+    const displayName = name || email.split('@')[0];
+    const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : 'Customer';
+    const newUser = await catalystApp.datastore().table('Users').insertRow({
+      Name: displayName, Email: email, Phone: '', Password_Hash: 'CATALYST_AUTH', Role: role
+    });
+    // Send welcome email for new users
+    await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(displayName));
+    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: displayName, Email: email, Phone: '', Role: role } });
+  } catch (error) { console.error('Auth sync error:', error); res.status(500).json({ success: false, message: 'Auth sync failed' }); }
+});
+
+// ─── Push Notification Helper ───
+async function sendPushNotification(catalystApp, message, emails) {
+  try {
+    if (!emails || emails.length === 0) return;
+    const msgStr = typeof message === 'string' ? message : JSON.stringify(message);
+    await catalystApp.pushNotification().web().sendNotification(msgStr, emails);
+    console.log(`Push sent to ${emails.join(', ')}: ${msgStr.substring(0, 100)}`);
+  } catch (e) { console.error('Push notification error:', e.message); }
+}
+
 // ─── PUT /profile ───
 app.put('/profile', async (req, res) => {
   try {
@@ -281,6 +317,8 @@ app.post('/orders', async (req, res) => {
         const items = Items || [];
         const html = orderPlacedEmail(user.Name, newOrder.ROWID, Total_Amount, items, Shipping_Address, Payment_Method || 'COD');
         await sendEmail(catalystApp, user.Email, `Order #${newOrder.ROWID} Placed - ${STORE_NAME}`, html);
+        // Push notification to admin about new order
+        await sendPushNotification(catalystApp, { type: 'NEW_ORDER', orderId: newOrder.ROWID, total: Total_Amount, customerName: user.Name }, [ADMIN_EMAIL]);
       }
     } catch (emailErr) { console.error('Order email error:', emailErr.message); }
 
@@ -441,6 +479,8 @@ app.put('/admin/order-status', async (req, res) => {
           const user = userRes[0].Users || userRes[0];
           const html = statusUpdateEmail(user.Name, orderId, status, order.Total_Amount);
           await sendEmail(catalystApp, user.Email, `Order #${orderId} ${status} - ${STORE_NAME}`, html);
+          // Push notification to customer about status change
+          await sendPushNotification(catalystApp, { type: 'ORDER_STATUS', orderId, status }, [user.Email]);
         }
       }
     } catch (emailErr) { console.error('Status email error:', emailErr.message); }
@@ -488,6 +528,8 @@ app.post('/admin/auto-confirm', async (req, res) => {
         const user = userRes[0].Users || userRes[0];
         const html = statusUpdateEmail(user.Name, orderId, 'Confirmed', order.Total_Amount);
         await sendEmail(catalystApp, user.Email, `Order #${orderId} Auto-Confirmed - ${STORE_NAME}`, html);
+        // Push notification to customer about auto-confirm
+        await sendPushNotification(catalystApp, { type: 'ORDER_STATUS', orderId, status: 'Confirmed' }, [user.Email]);
       }
     } catch (emailErr) { console.error('Auto-confirm email error:', emailErr.message); }
 

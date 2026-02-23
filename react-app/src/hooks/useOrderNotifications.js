@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
-const POLL_INTERVAL = 10000; // 10 seconds
+const POLL_INTERVAL = 60000; // 60s fallback (push notifications are primary)
 const LS_KEY = 'admin_known_order_count';
 const LS_NOTIFS_KEY = 'admin_notifications';
 const LS_INIT_KEY = 'admin_notif_initialized';
@@ -188,7 +188,21 @@ export function useOrderNotifications(isAdmin) {
     }
   }, [isAdmin]);
 
-  // Start polling
+  // Listen for push notifications (instant new-order alerts)
+  useEffect(() => {
+    if (!isAdmin) return;
+    const handlePush = (e) => {
+      const data = e.detail;
+      if (data?.type === 'NEW_ORDER') {
+        // Immediately check for new orders
+        checkForNewOrders();
+      }
+    };
+    window.addEventListener('catalyst-push', handlePush);
+    return () => window.removeEventListener('catalyst-push', handlePush);
+  }, [isAdmin, checkForNewOrders]);
+
+  // Start polling (slow fallback)
   useEffect(() => {
     if (!isAdmin) return;
     console.log('[Notif] Starting poll, interval:', POLL_INTERVAL);
