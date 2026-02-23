@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
-const LS_KEY = 'admin_known_order_count';
 const LS_NOTIFS_KEY = 'admin_notifications';
-const LS_INIT_KEY = 'admin_notif_initialized';
 
 // ─── Sound (Web Audio API — no external files) ───
 function playNotificationSound() {
@@ -44,19 +41,7 @@ function showBrowserNotification(title, body) {
   } catch (e) { /* notification not supported */ }
 }
 
-// ─── Persisted state helpers (all in localStorage to survive remounts) ───
-function getStoredCount() {
-  try { return parseInt(localStorage.getItem(LS_KEY) || '0'); } catch { return 0; }
-}
-function setStoredCount(c) {
-  try { localStorage.setItem(LS_KEY, String(c)); } catch {}
-}
-function isInitialized() {
-  try { return localStorage.getItem(LS_INIT_KEY) === 'true'; } catch { return false; }
-}
-function markInitialized() {
-  try { localStorage.setItem(LS_INIT_KEY, 'true'); } catch {}
-}
+// ─── localStorage helpers ───
 function getStoredNotifs() {
   try { return JSON.parse(localStorage.getItem(LS_NOTIFS_KEY) || '[]'); } catch { return []; }
 }
@@ -94,91 +79,6 @@ export function useOrderNotifications(isAdmin) {
   const markAllRead = useCallback(() => { setUnreadCount(0); }, []);
   const dismissToast = useCallback(() => { setLatestOrder(null); }, []);
 
-  // ─── Main poll function ───
-  const checkForNewOrders = useCallback(async () => {
-    if (!isAdmin) return;
-    try {
-      console.log('[Notif] Polling order-count...');
-      const res = await fetch(`${API_BASE}/admin/order-count`);
-      const data = await res.json();
-      console.log('[Notif] Response:', data);
-      if (!data.success) return;
-
-      const currentCount = data.count || 0;
-      const storedCount = getStoredCount();
-      const alreadyInit = isInitialized();
-
-      console.log(`[Notif] current=${currentCount}, stored=${storedCount}, initialized=${alreadyInit}`);
-
-      // First time ever — just store the count, don't notify
-      if (!alreadyInit) {
-        console.log('[Notif] First time init — storing count, no notification');
-        setStoredCount(currentCount);
-        markInitialized();
-        return;
-      }
-
-      if (currentCount > storedCount) {
-        const newCount = currentCount - storedCount;
-        console.log(`[Notif] 🔔 ${newCount} NEW order(s) detected!`);
-        setStoredCount(currentCount);
-
-        // Fetch full order details for the new orders
-        try {
-          const ordersRes = await fetch(`${API_BASE}/admin/orders`);
-          const ordersData = await ordersRes.json();
-          if (ordersData.success && ordersData.data) {
-            const newOrders = ordersData.data.slice(0, newCount);
-
-            const newNotifs = newOrders.map(o => ({
-              id: o.ROWID,
-              orderId: o.ROWID,
-              customerName: o.customerName || o.customerEmail || 'Customer',
-              total: parseFloat(o.Total_Amount || 0),
-              itemCount: (() => { try { return (o.enrichedItems || JSON.parse(o.Items || '[]')).length; } catch { return 0; } })(),
-              time: new Date().toISOString(),
-              status: o.Status || 'Pending',
-            }));
-
-            setNotifications(prev => {
-              const next = [...newNotifs, ...prev].slice(0, 30);
-              setStoredNotifs(next);
-              return next;
-            });
-            setUnreadCount(prev => prev + newCount);
-
-            // Toast for latest
-            setLatestOrder(newNotifs[0]);
-            setTimeout(() => setLatestOrder(null), 6000);
-
-            // Sound
-            playNotificationSound();
-
-            // Browser notification
-            if (newCount === 1) {
-              const o = newNotifs[0];
-              showBrowserNotification(
-                '🛒 New Order Received!',
-                `${o.customerName} — ₹${o.total.toFixed(0)} (${o.itemCount} item${o.itemCount !== 1 ? 's' : ''})`
-              );
-            } else {
-              showBrowserNotification('🛒 New Orders!', `${newCount} new orders received.`);
-            }
-
-            // Notify subscribers (AdminOrders auto-refresh)
-            onNewOrderCallbacks.current.forEach(cb => cb(newOrders));
-          }
-        } catch (e) { console.warn('[Notif] Failed to fetch order details:', e); }
-      } else if (currentCount < storedCount) {
-        // Orders deleted — sync count down
-        console.log('[Notif] Count decreased, syncing');
-        setStoredCount(currentCount);
-      }
-    } catch (e) {
-      console.warn('[Notif] Poll error:', e);
-    }
-  }, [isAdmin]);
-
   // Request browser notification permission
   useEffect(() => {
     if (isAdmin && 'Notification' in window && Notification.permission === 'default') {
@@ -186,25 +86,50 @@ export function useOrderNotifications(isAdmin) {
     }
   }, [isAdmin]);
 
-  // Listen for push notifications (instant new-order alerts)
+  // ─── Push-only: listen for Catalyst push notifications (NO polling) ───
   useEffect(() => {
     if (!isAdmin) return;
+
     const handlePush = (e) => {
       const data = e.detail;
       if (data?.type === 'NEW_ORDER') {
-        // Immediately check for new orders
-        checkForNewOrders();
+        const notif = {
+          id: data.orderId || Date.now(),
+          orderId: data.orderId,
+          customerName: data.customerName || 'Customer',
+          total: parseFloat(data.total || 0),
+          itemCount: data.itemCount || 0,
+          time: new Date().toISOString(),
+          status: 'Pending',
+        };
+
+        // Add to notification list
+        setNotifications(prev => {
+          const next = [notif, ...prev].slice(0, 30);
+          setStoredNotifs(next);
+          return next;
+        });
+        setUnreadCount(prev => prev + 1);
+
+        // Toast
+        setLatestOrder(notif);
+        setTimeout(() => setLatestOrder(null), 6000);
+
+        // Sound + browser notification
+        playNotificationSound();
+        showBrowserNotification(
+          '🛒 New Order Received!',
+          `${notif.customerName} — ₹${notif.total.toFixed(0)}`
+        );
+
+        // Notify subscribers (AdminOrders will refresh its order list)
+        onNewOrderCallbacks.current.forEach(cb => cb([data]));
       }
     };
+
     window.addEventListener('catalyst-push', handlePush);
     return () => window.removeEventListener('catalyst-push', handlePush);
-  }, [isAdmin, checkForNewOrders]);
-
-  // Initial load only (no polling — push notifications handle real-time updates)
-  useEffect(() => {
-    if (!isAdmin) return;
-    checkForNewOrders();
-  }, [isAdmin, checkForNewOrders]);
+  }, [isAdmin]);
 
   return { notifications, unreadCount, latestOrder, dismissNotification, dismissToast, clearAll, markAllRead, onNewOrder };
 }

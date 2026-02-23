@@ -138,7 +138,7 @@ function AdminOrders() {
     fetchOrders(true);
   }, [isAuthenticated, user, navigate, fetchOrders]);
 
-  // Auto-refresh when new orders come in via polling
+  // Auto-refresh when new orders arrive via push notification
   useEffect(() => {
     if (!notif?.onNewOrder) return;
     const unsubscribe = notif.onNewOrder((newOrders) => {

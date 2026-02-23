@@ -190,26 +190,27 @@ app.post('/google-auth', async (req, res) => {
 });
 
 // ─── POST /signup ───
+// Custom signup: creates user in Datastore + registers in Catalyst Auth (sends verification email)
 app.post('/signup', async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ success: false, message: 'Name, email, password required' });
+    const { name, email, phone } = req.body;
+    if (!name || !email) return res.status(400).json({ success: false, message: 'Name and email are required' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ success: false, message: 'Invalid email' });
-    if (password.length < 6) return res.status(400).json({ success: false, message: 'Password min 6 chars' });
 
     const catalystApp = initCatalyst(req);
     const existing = await catalystApp.zcql().executeZCQLQuery(`SELECT ROWID FROM Users WHERE Email = '${email}'`);
-    if (existing.length > 0) return res.status(409).json({ success: false, message: 'Email already exists' });
+    if (existing.length > 0) return res.status(409).json({ success: false, message: 'Email already registered. Please sign in instead.' });
 
-    const hash = await bcrypt.hash(password, 10);
-    const role = email === ADMIN_EMAIL ? 'Admin' : 'Customer';
-    const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name, Email: email, Phone: phone || '', Password_Hash: hash, Role: role });
-    await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(name));
+    const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : 'Customer';
+    const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name, Email: email, Phone: phone || '', Password_Hash: 'CATALYST_AUTH', Role: role });
 
-    // Register in Catalyst Auth (enables push notifications)
+    // Register in Catalyst Auth → sends verification email where user sets their password
     await ensureCatalystAuthUser(catalystApp, email, name);
 
-    res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
+    // Also send our branded welcome email
+    await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(name));
+
+    res.status(201).json({ success: true, message: 'Account created! Please check your email to set your password, then sign in.', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
   } catch (error) { console.error('Signup error:', error); res.status(500).json({ success: false, message: 'Signup failed' }); }
 });
 
@@ -276,12 +277,41 @@ async function sendPushNotification(catalystApp, message, emails) {
 
 // ─── Catalyst Auth Registration Helper ───
 // Registers a user in Catalyst Authentication (required for push notifications)
+// Sends a branded verification email where the user sets their password
 async function ensureCatalystAuthUser(catalystApp, email, firstName) {
   try {
-    await catalystApp.userManagement().registerUser(
-      { platform_type: 'web', redirect_url: STORE_URL + '/login' },
-      { first_name: firstName || email.split('@')[0], last_name: '', email_id: email }
-    );
+    const signupConfig = {
+      platform_type: 'web',
+      redirect_url: STORE_URL + '/login',
+      template_details: {
+        senders_mail: SENDER_EMAIL,
+        subject: `Set your password for ${STORE_NAME}`,
+        message: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:24px 32px;text-align:center;border-radius:12px 12px 0 0;">
+            <h1 style="margin:0;color:#fff;font-size:22px;">${STORE_NAME}</h1>
+          </div>
+          <div style="padding:32px;background:#fff;">
+            <h2 style="margin:0 0 12px;color:#111;">Welcome! Set Your Password</h2>
+            <p style="color:#6b7280;font-size:15px;">Hi ${firstName || 'there'},</p>
+            <p style="color:#6b7280;font-size:15px;">Click the link below to set your password and activate your account:</p>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="%LINK%" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">Set Password</a>
+            </div>
+            <p style="color:#9ca3af;font-size:13px;">Or copy this link: <a href="%LINK%" style="color:#f59e0b;">%LINK%</a></p>
+            <p style="color:#9ca3af;font-size:13px;margin-top:24px;">If you didn't create this account, you can ignore this email.</p>
+          </div>
+          <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-radius:0 0 12px 12px;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${STORE_NAME}</p>
+          </div>
+        </div>`
+      }
+    };
+    const userConfig = {
+      first_name: firstName || email.split('@')[0],
+      last_name: '',
+      email_id: email
+    };
+    await catalystApp.userManagement().registerUser(signupConfig, userConfig);
     console.log(`Catalyst Auth: Registered ${email}`);
     return true;
   } catch (e) {
@@ -290,6 +320,50 @@ async function ensureCatalystAuthUser(catalystApp, email, firstName) {
     return false;
   }
 }
+
+// ─── Reset Password Helper ───
+// Sends a password reset email via Catalyst Auth
+app.post('/reset-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ success: false, message: 'Invalid email' });
+
+    const catalystApp = initCatalyst(req);
+    await catalystApp.userManagement().resetPassword(email, {
+      platform_type: 'web',
+      redirect_url: STORE_URL + '/login',
+      template_details: {
+        senders_mail: SENDER_EMAIL,
+        subject: `Reset your ${STORE_NAME} password`,
+        message: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:24px 32px;text-align:center;border-radius:12px 12px 0 0;">
+            <h1 style="margin:0;color:#fff;font-size:22px;">${STORE_NAME}</h1>
+          </div>
+          <div style="padding:32px;background:#fff;">
+            <h2 style="margin:0 0 12px;color:#111;">Reset Your Password</h2>
+            <p style="color:#6b7280;font-size:15px;">We received a request to reset your password.</p>
+            <p style="color:#6b7280;font-size:15px;">Click the link below to set a new password:</p>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="%LINK%" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">Reset Password</a>
+            </div>
+            <p style="color:#9ca3af;font-size:13px;">Or copy this link: <a href="%LINK%" style="color:#f59e0b;">%LINK%</a></p>
+            <p style="color:#9ca3af;font-size:13px;margin-top:24px;">If you didn't request this, you can safely ignore this email.</p>
+          </div>
+          <div style="background:#f9fafb;padding:16px 32px;text-align:center;border-radius:0 0 12px 12px;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${STORE_NAME}</p>
+          </div>
+        </div>`
+      }
+    });
+
+    res.json({ success: true, message: 'Password reset email sent. Check your inbox.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    // Don't reveal if the email exists or not for security
+    res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' });
+  }
+});
 
 // ─── PUT /profile ───
 app.put('/profile', async (req, res) => {
