@@ -109,8 +109,18 @@ function Login() {
             />
           </div>
 
+          {/* Switch to Sign Up */}
+          <div className="mt-5 text-center">
+            <p className="text-sm text-gray-500">
+              Don't have an account?{' '}
+              <a href="/signup" className="font-semibold text-amber-600 hover:text-amber-700 underline underline-offset-2 transition-colors">
+                Sign Up
+              </a>
+            </p>
+          </div>
+
           {/* Feature badges */}
-          <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
             {[
               { icon: '🔒', label: 'Secure Login' },
               { icon: '🌐', label: 'Google Sign-In' },
