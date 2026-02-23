@@ -285,11 +285,14 @@ app.post('/auth/sync', async (req, res) => {
 // ─── Push Notification Helper ───
 async function sendPushNotification(catalystApp, message, emails) {
   try {
-    if (!emails || emails.length === 0) return;
+    if (!emails || emails.length === 0) { console.log('Push: no emails provided'); return; }
     const msgStr = typeof message === 'string' ? message : JSON.stringify(message);
-    await catalystApp.pushNotification().web().sendNotification(msgStr, emails);
-    console.log(`Push sent to ${emails.join(', ')}: ${msgStr.substring(0, 100)}`);
-  } catch (e) { console.error('Push notification error:', e.message); }
+    console.log(`Push: sending to ${emails.join(', ')}, payload: ${msgStr.substring(0, 200)}`);
+    const result = await catalystApp.pushNotification().web().sendNotification(msgStr, emails);
+    console.log(`Push sent successfully. Result:`, JSON.stringify(result).substring(0, 200));
+  } catch (e) {
+    console.error('Push notification error:', e.message, e.stack?.substring(0, 300));
+  }
 }
 
 // ─── Generate Catalyst JWT Token ───
@@ -305,7 +308,7 @@ async function generateCatalystToken(catalystApp, email, firstName) {
         last_name: ''
       }
     });
-    console.log(`JWT generated for ${email}`);
+    console.log(`JWT generated for ${email}, type: ${typeof token}, preview: ${typeof token === 'string' ? token.substring(0, 50) : JSON.stringify(token).substring(0, 100)}`);
     return token;
   } catch (e) {
     console.error(`JWT generation error for ${email}:`, e.message || e);

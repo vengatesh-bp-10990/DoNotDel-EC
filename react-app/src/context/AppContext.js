@@ -38,15 +38,23 @@ function AppProvider({ children }) {
     return null;
   }, []);
 
+  // Catalyst ZAID (client_id) for signinWithJwt
+  const CATALYST_CLIENT_ID = '50039032514';
+
   // Enable Catalyst push notifications
   const enablePush = useCallback(() => {
     if (pushInitRef.current) return;
     const cat = window.catalyst;
-    if (!cat?.notification) return;
+    if (!cat?.notification) {
+      console.warn('Push: catalyst.notification not available');
+      return;
+    }
     pushInitRef.current = true;
+    console.log('Push: calling enableNotification()...');
     try {
       cat.notification.enableNotification().then(() => {
         cat.notification.messageHandler = (msg) => {
+          console.log('Push message received:', msg);
           try {
             const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
             window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
@@ -54,9 +62,15 @@ function AppProvider({ children }) {
             window.dispatchEvent(new CustomEvent('catalyst-push', { detail: { message: msg } }));
           }
         };
-        console.log('Push notifications enabled');
-      }).catch(e => console.error('Push enable failed:', e));
-    } catch (e) { console.error('Push notification error:', e); }
+        console.log('Push notifications enabled successfully');
+      }).catch(e => {
+        console.error('Push enable failed:', e);
+        pushInitRef.current = false; // Allow retry
+      });
+    } catch (e) {
+      console.error('Push notification error:', e);
+      pushInitRef.current = false;
+    }
   }, []);
 
   // Wait for Catalyst SDK to be ready
@@ -89,9 +103,13 @@ function AppProvider({ children }) {
         if (cancelled) return;
         const cat = window.catalyst;
         if (cat?.auth?.signinWithJwt) {
-          cat.auth.signinWithJwt(() => Promise.resolve({ jwt_token: storedJwt }))
+          console.log('Restoring Catalyst session with JWT...');
+          cat.auth.signinWithJwt(() => Promise.resolve({
+            client_id: CATALYST_CLIENT_ID,
+            jwt_token: storedJwt
+          }))
             .then(() => { console.log('Catalyst session restored'); enablePush(); })
-            .catch(e => { console.log('JWT session restore failed:', e.message); enablePush(); });
+            .catch(e => { console.error('JWT session restore failed:', e); enablePush(); });
         } else {
           enablePush();
         }
@@ -110,9 +128,12 @@ function AppProvider({ children }) {
 
   // Establish a Catalyst Auth session using JWT from our backend (generateCustomToken)
   const establishCatalystSession = useCallback(async (jwtToken) => {
-    if (!jwtToken) return;
+    if (!jwtToken) { console.warn('No JWT token to establish session'); return; }
+    console.log('JWT token received, type:', typeof jwtToken, 'preview:', typeof jwtToken === 'string' ? jwtToken.substring(0, 60) + '...' : JSON.stringify(jwtToken).substring(0, 100));
+    // If the token is an object (e.g. { jwt_token: "..." }), extract the string
+    const tokenStr = typeof jwtToken === 'object' ? (jwtToken.jwt_token || jwtToken.token || JSON.stringify(jwtToken)) : jwtToken;
     // Persist JWT so we can re-establish session on page reload
-    localStorage.setItem('ec_jwt', jwtToken);
+    localStorage.setItem('ec_jwt', tokenStr);
     await waitForSDK();
     const cat = window.catalyst;
     if (!cat?.auth?.signinWithJwt) {
@@ -120,7 +141,11 @@ function AppProvider({ children }) {
       return;
     }
     try {
-      await cat.auth.signinWithJwt(() => Promise.resolve({ jwt_token: jwtToken }));
+      console.log('Establishing Catalyst JWT session...');
+      await cat.auth.signinWithJwt(() => Promise.resolve({
+        client_id: CATALYST_CLIENT_ID,
+        jwt_token: tokenStr
+      }));
       console.log('Catalyst JWT session established');
       pushInitRef.current = false;
       enablePush();
