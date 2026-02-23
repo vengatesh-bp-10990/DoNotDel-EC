@@ -3,6 +3,19 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 const AppContext = createContext();
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
+// VAPID public key for Web Push (generated once, matches backend private key)
+const VAPID_PUBLIC_KEY = 'BJyNqcoYniSvYg2w1NJx9hiHQRrdVY0dkA0-LAnEhDdOIgdePw8My9AvRpGLfVmMLmaqHVLg13xLdhWTwBcwaFM';
+
+// Convert URL-safe base64 to Uint8Array (needed for applicationServerKey)
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
 function AppProvider({ children }) {
   /* ─── User State ─── */
   const [user, setUser] = useState(null);
@@ -14,84 +27,80 @@ function AppProvider({ children }) {
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
-  // Sync Catalyst user to our Datastore
-  const syncUser = useCallback(async (catUser) => {
-    try {
-      const email = catUser.email_id || catUser.emailid || catUser.email;
-      const firstName = catUser.first_name || catUser.firstName || '';
-      const lastName = catUser.last_name || catUser.lastName || '';
-      const name = `${firstName} ${lastName}`.trim() || email?.split('@')[0] || 'User';
-      const catalystUserId = catUser.user_id || catUser.userid || catUser.userId || '';
-      if (!email) throw new Error('No email from Catalyst auth');
-      const res = await fetch(`${API_BASE}/auth/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, catalystUserId }),
-      });
-      const data = await res.json();
-      if (data.success && data.user) {
-        setUser(data.user);
-        localStorage.setItem('ec_user', JSON.stringify(data.user));
-        return data.user;
-      }
-    } catch (e) { console.error('Sync user error:', e); }
-    return null;
-  }, []);
-
-  // Catalyst ZAID (client_id) for signinWithJwt
-  const CATALYST_CLIENT_ID = '50039032514';
-  const CATALYST_SCOPES = 'ZOHOCATALYST.tables.rows.ALL,ZOHOCATALYST.notifications.web,ZOHOCATALYST.cache.READ,ZOHOCATALYST.files.ALL';
-  // Scope that MUST be present for push notifications to work
-  const NOTIFICATION_SCOPE = 'ZOHOCATALYST.notifications.web';
-
-  // Ensure notification scope is always included in the scopes string
-  const ensureNotificationScope = (scopeStr) => {
-    if (!scopeStr) return CATALYST_SCOPES;
-    if (scopeStr.toLowerCase().includes('notifications.web')) return scopeStr;
-    return scopeStr + ',' + NOTIFICATION_SCOPE;
-  };
-
-  // Enable Catalyst push notifications
-  const enablePush = useCallback(() => {
+  // ─── Web Push: Subscribe and send subscription to backend ───
+  const subscribeToPush = useCallback(async (email) => {
     if (pushInitRef.current) return;
-    const cat = window.catalyst;
-    if (!cat?.notification) {
-      console.warn('Push: catalyst.notification not available');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn('Push: Browser does not support Web Push');
       return;
     }
-    pushInitRef.current = true;
-    console.log('Push: calling enableNotification()...');
+
     try {
-      cat.notification.enableNotification().then(() => {
-        cat.notification.messageHandler = (msg) => {
-          console.log('Push message received:', msg);
-          try {
-            const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
-            window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
-          } catch {
-            window.dispatchEvent(new CustomEvent('catalyst-push', { detail: { message: msg } }));
-          }
-        };
-        console.log('Push notifications enabled successfully');
-      }).catch(e => {
-        console.error('Push enable failed:', e);
-        pushInitRef.current = false; // Allow retry
+      pushInitRef.current = true;
+
+      // Register service worker
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('Push: Service Worker registered');
+
+      // Wait for the SW to be active
+      const sw = registration.active || registration.waiting || registration.installing;
+      if (sw && sw.state !== 'activated') {
+        await new Promise((resolve) => {
+          sw.addEventListener('statechange', () => { if (sw.state === 'activated') resolve(); });
+        });
+      }
+
+      // Request notification permission
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        console.warn('Push: Notification permission denied');
+        pushInitRef.current = false;
+        return;
+      }
+
+      // Subscribe to push
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+        console.log('Push: New subscription created');
+      } else {
+        console.log('Push: Using existing subscription');
+      }
+
+      // Send subscription to backend
+      const res = await fetch(`${API_BASE}/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, subscription: subscription.toJSON() }),
       });
+      const data = await res.json();
+      if (data.success) {
+        console.log('Push: Subscription saved to backend');
+      } else {
+        console.warn('Push: Failed to save subscription:', data.message);
+        pushInitRef.current = false;
+      }
     } catch (e) {
-      console.error('Push notification error:', e);
+      console.error('Push subscription error:', e);
       pushInitRef.current = false;
     }
   }, []);
 
-  // Wait for Catalyst SDK to be ready
-  const waitForSDK = useCallback(() => {
-    return new Promise((resolve) => {
-      const check = () => {
-        if (window.catalyst?.auth) resolve(true);
-        else setTimeout(check, 150);
-      };
-      check();
-    });
+  // Listen for Service Worker messages (in-app push forwarding)
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handler = (event) => {
+      if (event.data?.type === 'PUSH_RECEIVED') {
+        const payload = event.data.payload;
+        console.log('Push message received in-app:', payload);
+        window.dispatchEvent(new CustomEvent('catalyst-push', { detail: payload }));
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
   }, []);
 
   // Check auth on mount
@@ -101,103 +110,34 @@ function AppProvider({ children }) {
     try {
       const saved = localStorage.getItem('ec_user');
       if (saved && !cancelled) {
-        setUser(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setUser(parsed);
+        // Subscribe to push for this user
+        if (parsed?.Email) subscribeToPush(parsed.Email);
       }
     } catch { localStorage.removeItem('ec_user'); }
     if (!cancelled) setAuthLoading(false);
 
-    // Re-establish Catalyst session in background for push notifications
-    const storedJwtRaw = localStorage.getItem('ec_jwt');
-    if (storedJwtRaw && localStorage.getItem('ec_user')) {
-      let jwtStr, clientId, scopes;
-      try {
-        const parsed = JSON.parse(storedJwtRaw);
-        jwtStr = parsed.jwt_token || storedJwtRaw;
-        clientId = parsed.client_id || CATALYST_CLIENT_ID;
-        const rawScopes = parsed.scopes || parsed.scope || CATALYST_SCOPES;
-        scopes = ensureNotificationScope(Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes));
-      } catch {
-        // Old format — plain string
-        jwtStr = storedJwtRaw;
-        clientId = CATALYST_CLIENT_ID;
-        scopes = CATALYST_SCOPES;
-      }
-      waitForSDK().then(() => {
-        if (cancelled) return;
-        const cat = window.catalyst;
-        if (cat?.auth?.signinWithJwt) {
-          console.log('Restoring Catalyst session with client_id:', clientId, 'scopes:', scopes);
-          cat.auth.signinWithJwt(() => Promise.resolve({
-            client_id: clientId,
-            scopes: scopes,
-            jwt_token: jwtStr
-          }))
-            .then(() => {
-              console.log('Catalyst session restored, waiting before enabling push...');
-              setTimeout(() => enablePush(), 2000);
-            })
-            .catch(e => { console.error('JWT session restore failed:', e); enablePush(); });
-        } else {
-          enablePush();
-        }
-      });
-    } else if (localStorage.getItem('ec_user')) {
-      waitForSDK().then(() => { if (!cancelled) enablePush(); });
-    }
-
     return () => { cancelled = true; };
-  }, [enablePush, waitForSDK]);
+  }, [subscribeToPush]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('ec_user', JSON.stringify(userData));
   }, []);
 
-  // Establish a Catalyst Auth session using JWT from our backend (generateCustomToken)
-  const establishCatalystSession = useCallback(async (tokenData) => {
-    if (!tokenData) { console.warn('No JWT token to establish session'); return; }
-    console.log('Token data received:', typeof tokenData, JSON.stringify(tokenData).substring(0, 200));
-
-    // tokenData can be a string (just JWT) or object { jwt_token, client_id, scopes, ... }
-    let jwtStr, clientId, scopes;
-    if (typeof tokenData === 'object' && tokenData !== null) {
-      jwtStr = tokenData.jwt_token || tokenData.token || '';
-      clientId = tokenData.client_id || CATALYST_CLIENT_ID;
-      const rawScopes = tokenData.scopes || tokenData.scope || CATALYST_SCOPES;
-      scopes = ensureNotificationScope(Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes));
-    } else {
-      jwtStr = tokenData;
-      clientId = CATALYST_CLIENT_ID;
-      scopes = CATALYST_SCOPES;
+  // After login/signup, subscribe to push notifications
+  const establishCatalystSession = useCallback(async (tokenData, email) => {
+    // Store JWT for any future use
+    if (tokenData) {
+      localStorage.setItem('ec_jwt', JSON.stringify(tokenData));
     }
-
-    if (!jwtStr) { console.warn('No JWT string found in token data'); return; }
-
-    // Persist full token object so we can re-establish session on page reload
-    localStorage.setItem('ec_jwt', JSON.stringify({ jwt_token: jwtStr, client_id: clientId, scopes }));
-
-    await waitForSDK();
-    const cat = window.catalyst;
-    if (!cat?.auth?.signinWithJwt) {
-      console.warn('Catalyst SDK signinWithJwt not available');
-      return;
+    // Subscribe to Web Push
+    if (email) {
+      pushInitRef.current = false; // Allow fresh subscription
+      await subscribeToPush(email);
     }
-    try {
-      console.log('Establishing Catalyst JWT session with client_id:', clientId, 'scopes:', scopes);
-      await cat.auth.signinWithJwt(() => Promise.resolve({
-        client_id: clientId,
-        scopes: scopes,
-        jwt_token: jwtStr
-      }));
-      console.log('Catalyst JWT session established, waiting before enabling push...');
-      pushInitRef.current = false;
-      // Delay to allow session cookies to fully propagate before hitting notification endpoint
-      await new Promise(r => setTimeout(r, 2000));
-      enablePush();
-    } catch (e) {
-      console.error('Catalyst JWT sign-in error:', e);
-    }
-  }, [enablePush, waitForSDK]);
+  }, [subscribeToPush]);
 
   const logoutUser = useCallback(() => {
     setUser(null);
@@ -206,7 +146,12 @@ function AppProvider({ children }) {
     localStorage.removeItem('cartItems');
     setCartItems([]);
     pushInitRef.current = false;
-    // Redirect to home (don't use catalyst.auth.signOut — it causes redirect issues)
+    // Unregister service worker push subscription
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription())
+        .then(sub => { if (sub) sub.unsubscribe(); })
+        .catch(() => {});
+    }
     window.location.href = '/';
   }, []);
 

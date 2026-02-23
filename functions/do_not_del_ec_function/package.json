@@ -8,6 +8,7 @@
 		"cors": "^2.8.6",
 		"express": "^5.2.1",
 		"nodemailer": "^8.0.1",
+		"web-push": "^3.6.7",
 		"zcatalyst-sdk-node": "^3.2.0"
 	}
 }

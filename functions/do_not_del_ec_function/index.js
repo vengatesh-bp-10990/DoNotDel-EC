@@ -3,12 +3,22 @@
 const express = require('express');
 const catalyst = require('zcatalyst-sdk-node');
 const bcrypt = require('bcryptjs');
+const webpush = require('web-push');
 
 const app = express();
 app.use(express.json());
 
 const ADMIN_EMAIL = 'vengi9360@gmail.com';
 const CACHE_SEGMENT_ID = '21282000000050152';
+
+// ─── VAPID Keys for Web Push ───
+const VAPID_PUBLIC_KEY = 'BJyNqcoYniSvYg2w1NJx9hiHQRrdVY0dkA0-LAnEhDdOIgdePw8My9AvRpGLfVmMLmaqHVLg13xLdhWTwBcwaFM';
+const VAPID_PRIVATE_KEY = 'etTcCAMtvXAyQIyR1mu-Z5l832kgbZm-TnHv4Q8sudM';
+webpush.setVapidDetails('mailto:' + ADMIN_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+
+// In-memory push subscription store (keyed by email)
+// On cold start this resets, so frontend re-subscribes on each page load
+const pushSubscriptions = new Map();
 const PRODUCTS_CACHE_KEY = 'all_products';
 const CACHE_EXPIRY_HOURS = 1;
 const SENDER_EMAIL = 'vengatesh.bp@zohocorp.com';
@@ -282,16 +292,70 @@ app.post('/auth/sync', async (req, res) => {
   } catch (error) { console.error('Auth sync error:', error); res.status(500).json({ success: false, message: 'Auth sync failed' }); }
 });
 
-// ─── Push Notification Helper ───
+// ─── Web Push Subscription Endpoint ───
+app.post('/push/subscribe', (req, res) => {
+  try {
+    const { email, subscription } = req.body;
+    if (!email || !subscription) return res.status(400).json({ success: false, message: 'email and subscription required' });
+    // Store subscription (one per email; latest wins)
+    pushSubscriptions.set(email.toLowerCase(), subscription);
+    console.log(`Push: saved subscription for ${email}, total: ${pushSubscriptions.size}`);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Push subscribe error:', e);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// ─── Web Push Notification Helper ───
 async function sendPushNotification(catalystApp, message, emails) {
   try {
     if (!emails || emails.length === 0) { console.log('Push: no emails provided'); return; }
-    const msgStr = typeof message === 'string' ? message : JSON.stringify(message);
-    console.log(`Push: sending to ${emails.join(', ')}, payload: ${msgStr.substring(0, 200)}`);
-    const result = await catalystApp.pushNotification().web().sendNotification(msgStr, emails);
-    console.log(`Push sent successfully. Result:`, JSON.stringify(result).substring(0, 200));
+    const payload = typeof message === 'string' ? message : JSON.stringify(message);
+    console.log(`Push: sending to ${emails.join(', ')}, payload: ${payload.substring(0, 200)}`);
+
+    // Build a rich notification for the service worker
+    let notifPayload;
+    try {
+      const data = typeof message === 'object' ? message : JSON.parse(message);
+      if (data.type === 'NEW_ORDER') {
+        notifPayload = JSON.stringify({
+          ...data,
+          title: '🛒 New Order Received!',
+          body: `${data.customerName || 'Customer'} — ₹${data.total || 0}`,
+          tag: 'new-order-' + (data.orderId || Date.now()),
+        });
+      } else if (data.type === 'ORDER_STATUS') {
+        notifPayload = JSON.stringify({
+          ...data,
+          title: `Order #${data.orderId} ${data.status}`,
+          body: `Your order status has been updated to: ${data.status}`,
+          tag: 'order-status-' + (data.orderId || Date.now()),
+        });
+      } else {
+        notifPayload = payload;
+      }
+    } catch {
+      notifPayload = payload;
+    }
+
+    for (const email of emails) {
+      const sub = pushSubscriptions.get(email.toLowerCase());
+      if (!sub) { console.log(`Push: no subscription for ${email}`); continue; }
+      try {
+        await webpush.sendNotification(sub, notifPayload);
+        console.log(`Push sent to ${email}`);
+      } catch (e) {
+        console.error(`Push to ${email} failed:`, e.statusCode || e.message);
+        if (e.statusCode === 410 || e.statusCode === 404) {
+          // Subscription expired/invalid — remove it
+          pushSubscriptions.delete(email.toLowerCase());
+          console.log(`Push: removed stale subscription for ${email}`);
+        }
+      }
+    }
   } catch (e) {
-    console.error('Push notification error:', e.message, e.stack?.substring(0, 300));
+    console.error('Push notification error:', e.message);
   }
 }
 

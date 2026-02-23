@@ -40,9 +40,9 @@ function Signup() {
       // Store user in app context
       loginUser(data.user);
 
-      // Establish Catalyst Auth session using JWT (for push notifications)
+      // Subscribe to Web Push notifications
       if (data.jwt_token) {
-        await establishCatalystSession(data.jwt_token);
+        await establishCatalystSession(data.jwt_token, data.user?.Email);
       }
 
       // Redirect to home or admin
