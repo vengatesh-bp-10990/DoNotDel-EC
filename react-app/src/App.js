@@ -16,6 +16,133 @@ import AdminCategories from './pages/admin/AdminCategories';
 import AdminLayout from './components/AdminLayout';
 import AuthModal from './components/AuthModal';
 
+function LocationPicker() {
+  const { location, setLocation, lookupPincode } = useApp();
+  const [open, setOpen] = useState(false);
+  const [pincodeInput, setPincodeInput] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [error, setError] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const detectLocation = async () => {
+    setError('');
+    if (!navigator.geolocation) { setError('Geolocation not supported'); return; }
+    setDetecting(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const data = await res.json();
+          const addr = data?.address || {};
+          const pincode = addr.postcode || '';
+          const city = addr.city || addr.town || addr.village || addr.county || addr.state_district || '';
+          const state = addr.state || '';
+          if (city || pincode) {
+            setLocation({ pincode, city, state, lat: latitude, lng: longitude });
+            setOpen(false);
+          } else {
+            setError('Could not detect location');
+          }
+        } catch { setError('Detection failed'); }
+        setDetecting(false);
+      },
+      () => { setError('Location access denied'); setDetecting(false); },
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  };
+
+  const searchPincode = async () => {
+    setError('');
+    if (pincodeInput.length !== 6) { setError('Enter valid 6-digit pincode'); return; }
+    setSearching(true);
+    const result = await lookupPincode(pincodeInput);
+    if (result) {
+      setLocation({ pincode: result.pincode, city: result.city, state: result.state });
+      setOpen(false);
+      setPincodeInput('');
+    } else {
+      setError('Invalid pincode');
+    }
+    setSearching(false);
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-sm text-gray-600 hover:bg-amber-50 hover:text-amber-700 transition-all max-w-[180px]"
+      >
+        <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span className="truncate text-xs sm:text-sm font-medium">
+          {location ? (location.city || location.pincode || 'Set location') : 'Set location'}
+        </span>
+        <svg className={`w-3 h-3 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 z-50 animate-slide-down">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Your Location</p>
+
+          {/* Current location display */}
+          {location && (
+            <div className="flex items-center gap-2 bg-amber-50 rounded-xl p-3 mb-3">
+              <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">{location.city || 'Unknown'}</p>
+                <p className="text-xs text-gray-500">{[location.state, location.pincode].filter(Boolean).join(' - ')}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Detect button */}
+          <button onClick={detectLocation} disabled={detecting}
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-blue-600 hover:bg-blue-50 transition-all mb-2 disabled:opacity-50">
+            {detecting ? (
+              <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v2m0 16v2M2 12h2m16 0h2M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>
+            )}
+            {detecting ? 'Detecting...' : 'Use current location'}
+          </button>
+
+          {/* Pincode search */}
+          <div className="flex gap-2">
+            <input
+              type="text" maxLength={6} value={pincodeInput}
+              onChange={(e) => setPincodeInput(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => e.key === 'Enter' && searchPincode()}
+              placeholder="Enter pincode"
+              className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none"
+            />
+            <button onClick={searchPincode} disabled={searching}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-50">
+              {searching ? '...' : 'Go'}
+            </button>
+          </div>
+
+          {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Navbar() {
   const { cartCount, isAuthenticated, user, logoutUser, openAuthModal } = useApp();
   const navigate = useNavigate();
@@ -43,6 +170,9 @@ function Navbar() {
               Homemade Products
             </span>
           </Link>
+
+          {/* Location Picker */}
+          <LocationPicker />
 
           <div className="flex items-center gap-0.5 sm:gap-1">
             <Link to="/" className="px-3 sm:px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:text-amber-600 hover:bg-amber-50 transition-all">Home</Link>

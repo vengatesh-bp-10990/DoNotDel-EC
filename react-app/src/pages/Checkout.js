@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
@@ -44,7 +44,7 @@ function InputField({ label, name, value, placeholder, required, type = 'text', 
 }
 
 function Checkout() {
-  const { cartItems, cartTotal, clearCart, isAuthenticated, user, openAuthModal } = useApp();
+  const { cartItems, cartTotal, clearCart, isAuthenticated, user, openAuthModal, location, lookupPincode } = useApp();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1); // 1=address, 2=review, 3=done
@@ -52,11 +52,38 @@ function Checkout() {
     fullName: user?.Name || '',
     phone: user?.Phone || '',
     email: user?.Email || '',
-    addressLine1: '', addressLine2: '', city: '', state: 'Tamil Nadu', pincode: '',
+    addressLine1: '', addressLine2: '',
+    city: location?.city || '',
+    state: location?.state || 'Tamil Nadu',
+    pincode: location?.pincode || '',
     sameAsBilling: true,
     bFullName: '', bAddressLine1: '', bCity: '', bState: 'Tamil Nadu', bPincode: '',
   });
   const [orderId, setOrderId] = useState(null);
+  const [pincodeLoading, setPincodeLoading] = useState(false);
+
+  // Auto-fill city/state when pincode changes (6 digits)
+  const handlePincodeLookup = useCallback(async (pincode) => {
+    if (pincode.length !== 6) return;
+    setPincodeLoading(true);
+    const result = await lookupPincode(pincode);
+    if (result) {
+      setForm(prev => ({ ...prev, city: result.city, state: result.state }));
+    }
+    setPincodeLoading(false);
+  }, [lookupPincode]);
+
+  // If saved location updates and fields are still empty, auto-fill
+  useEffect(() => {
+    if (location) {
+      setForm(prev => ({
+        ...prev,
+        city: prev.city || location.city || '',
+        state: prev.state || location.state || 'Tamil Nadu',
+        pincode: prev.pincode || location.pincode || '',
+      }));
+    }
+  }, [location]);
 
   if (!isAuthenticated) {
     return (
@@ -85,7 +112,14 @@ function Checkout() {
     );
   }
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
+    // Auto-lookup when pincode reaches 6 digits
+    if (name === 'pincode' && value.replace(/\D/g, '').length === 6) {
+      handlePincodeLookup(value.replace(/\D/g, ''));
+    }
+  };
   const deliveryFee = cartTotal >= 500 ? 0 : 40;
   const grandTotal = cartTotal + deliveryFee;
 
@@ -226,7 +260,10 @@ function Checkout() {
                 <InputField label="Address Line 2" name="addressLine2" value={form.addressLine2} placeholder="Landmark (optional)" onChange={handleChange} />
                 <div className="flex gap-4">
                   <InputField label="City" name="city" value={form.city} placeholder="City" required half onChange={handleChange} />
-                  <InputField label="Pincode" name="pincode" value={form.pincode} placeholder="600001" required half onChange={handleChange} />
+                  <div className="flex-1 relative">
+                    <InputField label="Pincode" name="pincode" value={form.pincode} placeholder="600001" required onChange={handleChange} />
+                    {pincodeLoading && <div className="absolute right-3 top-8 w-4 h-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />}
+                  </div>
                 </div>
                 <InputField label="State" name="state" value={form.state} placeholder="State" required onChange={handleChange} />
 
