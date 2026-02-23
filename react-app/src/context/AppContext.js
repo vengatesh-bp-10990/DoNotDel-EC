@@ -105,7 +105,8 @@ function AppProvider({ children }) {
         const parsed = JSON.parse(storedJwtRaw);
         jwtStr = parsed.jwt_token || storedJwtRaw;
         clientId = parsed.client_id || CATALYST_CLIENT_ID;
-        scopes = parsed.scopes || parsed.scope || CATALYST_SCOPES;
+        const rawScopes = parsed.scopes || parsed.scope || CATALYST_SCOPES;
+        scopes = Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes);
       } catch {
         // Old format — plain string
         jwtStr = storedJwtRaw;
@@ -116,7 +117,7 @@ function AppProvider({ children }) {
         if (cancelled) return;
         const cat = window.catalyst;
         if (cat?.auth?.signinWithJwt) {
-          console.log('Restoring Catalyst session with client_id:', clientId, 'scopes:', scopes?.substring(0, 60));
+          console.log('Restoring Catalyst session with client_id:', clientId, 'scopes:', String(scopes).substring(0, 80));
           cat.auth.signinWithJwt(() => Promise.resolve({
             client_id: clientId,
             scopes: scopes,
@@ -150,7 +151,8 @@ function AppProvider({ children }) {
     if (typeof tokenData === 'object' && tokenData !== null) {
       jwtStr = tokenData.jwt_token || tokenData.token || '';
       clientId = tokenData.client_id || CATALYST_CLIENT_ID;
-      scopes = tokenData.scopes || tokenData.scope || CATALYST_SCOPES;
+      const rawScopes = tokenData.scopes || tokenData.scope || CATALYST_SCOPES;
+      scopes = Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes);
     } else {
       jwtStr = tokenData;
       clientId = CATALYST_CLIENT_ID;
@@ -169,7 +171,7 @@ function AppProvider({ children }) {
       return;
     }
     try {
-      console.log('Establishing Catalyst JWT session with client_id:', clientId, 'scopes:', scopes?.substring(0, 60));
+      console.log('Establishing Catalyst JWT session with client_id:', clientId, 'scopes:', String(scopes).substring(0, 80));
       await cat.auth.signinWithJwt(() => Promise.resolve({
         client_id: clientId,
         scopes: scopes,
