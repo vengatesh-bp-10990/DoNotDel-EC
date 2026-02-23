@@ -189,17 +189,13 @@ app.post('/google-auth', async (req, res) => {
       const u = existing[0].Users;
       const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
       if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
-      await ensureCatalystAuthUser(catalystApp, email, u.Name);
-      const jwt_token = await generateCatalystToken(catalystApp, email, u.Name);
-      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role }, jwt_token });
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
     }
     const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : 'Customer';
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name || email.split('@')[0], Email: email, Phone: '', Password_Hash: 'GOOGLE_AUTH', Role: role });
     const displayName = name || email.split('@')[0];
-    await ensureCatalystAuthUser(catalystApp, email, displayName);
-    const jwt_token = await generateCatalystToken(catalystApp, email, displayName);
     await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(displayName));
-    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: displayName, Email: email, Phone: '', Role: role }, jwt_token });
+    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: displayName, Email: email, Phone: '', Role: role } });
   } catch (error) { console.error('Google auth error:', error); res.status(500).json({ success: false, message: 'Google auth failed' }); }
 });
 
@@ -220,16 +216,10 @@ app.post('/signup', async (req, res) => {
     const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : 'Customer';
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name, Email: email, Phone: phone || '', Password_Hash: hash, Role: role });
 
-    // Register in Catalyst Auth (for push notifications)
-    await ensureCatalystAuthUser(catalystApp, email, name);
-
-    // Generate custom JWT token for instant Catalyst session
-    const jwt_token = await generateCatalystToken(catalystApp, email, name);
-
     // Send welcome email
     await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(name));
 
-    res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role }, jwt_token });
+    res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
   } catch (error) { console.error('Signup error:', error); res.status(500).json({ success: false, message: 'Signup failed' }); }
 });
 
@@ -245,9 +235,7 @@ app.post('/login', async (req, res) => {
       if (email.toLowerCase() === ADMIN_EMAIL) {
         const hash = await bcrypt.hash(password, 10);
         const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: 'Admin', Email: email, Phone: '', Password_Hash: hash, Role: 'Admin' });
-        await ensureCatalystAuthUser(catalystApp, email, 'Admin');
-        const jwt_token = await generateCatalystToken(catalystApp, email, 'Admin');
-        return res.json({ success: true, user: { ROWID: newUser.ROWID, Name: 'Admin', Email: email, Phone: '', Role: 'Admin' }, jwt_token });
+        return res.json({ success: true, user: { ROWID: newUser.ROWID, Name: 'Admin', Email: email, Phone: '', Role: 'Admin' } });
       }
       return res.status(401).json({ success: false, message: 'No account found. Please sign up first.' });
     }
@@ -257,9 +245,7 @@ app.post('/login', async (req, res) => {
       const hash = await bcrypt.hash(password, 10);
       const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
       await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Password_Hash: hash, Role: role });
-      await ensureCatalystAuthUser(catalystApp, email, u.Name);
-      const jwt_token = await generateCatalystToken(catalystApp, email, u.Name);
-      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role }, jwt_token });
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
     }
     if (u.Password_Hash === 'CATALYST_AUTH') {
       // Legacy account without password — set it now
@@ -270,9 +256,7 @@ app.post('/login', async (req, res) => {
     }
     const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
     if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
-    await ensureCatalystAuthUser(catalystApp, email, u.Name);
-    const jwt_token = await generateCatalystToken(catalystApp, email, u.Name);
-    res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role }, jwt_token });
+    res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
   } catch (error) { console.error('Login error:', error); res.status(500).json({ success: false, message: 'Login failed' }); }
 });
 
