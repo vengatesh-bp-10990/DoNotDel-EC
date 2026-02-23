@@ -41,6 +41,15 @@ function AppProvider({ children }) {
   // Catalyst ZAID (client_id) for signinWithJwt
   const CATALYST_CLIENT_ID = '50039032514';
   const CATALYST_SCOPES = 'ZOHOCATALYST.tables.rows.ALL,ZOHOCATALYST.notifications.web,ZOHOCATALYST.cache.READ,ZOHOCATALYST.files.ALL';
+  // Scope that MUST be present for push notifications to work
+  const NOTIFICATION_SCOPE = 'ZOHOCATALYST.notifications.web';
+
+  // Ensure notification scope is always included in the scopes string
+  const ensureNotificationScope = (scopeStr) => {
+    if (!scopeStr) return CATALYST_SCOPES;
+    if (scopeStr.toLowerCase().includes('notifications.web')) return scopeStr;
+    return scopeStr + ',' + NOTIFICATION_SCOPE;
+  };
 
   // Enable Catalyst push notifications
   const enablePush = useCallback(() => {
@@ -106,7 +115,7 @@ function AppProvider({ children }) {
         jwtStr = parsed.jwt_token || storedJwtRaw;
         clientId = parsed.client_id || CATALYST_CLIENT_ID;
         const rawScopes = parsed.scopes || parsed.scope || CATALYST_SCOPES;
-        scopes = Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes);
+        scopes = ensureNotificationScope(Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes));
       } catch {
         // Old format — plain string
         jwtStr = storedJwtRaw;
@@ -117,13 +126,16 @@ function AppProvider({ children }) {
         if (cancelled) return;
         const cat = window.catalyst;
         if (cat?.auth?.signinWithJwt) {
-          console.log('Restoring Catalyst session with client_id:', clientId, 'scopes:', String(scopes).substring(0, 80));
+          console.log('Restoring Catalyst session with client_id:', clientId, 'scopes:', scopes);
           cat.auth.signinWithJwt(() => Promise.resolve({
             client_id: clientId,
             scopes: scopes,
             jwt_token: jwtStr
           }))
-            .then(() => { console.log('Catalyst session restored'); enablePush(); })
+            .then(() => {
+              console.log('Catalyst session restored, waiting before enabling push...');
+              setTimeout(() => enablePush(), 2000);
+            })
             .catch(e => { console.error('JWT session restore failed:', e); enablePush(); });
         } else {
           enablePush();
@@ -152,7 +164,7 @@ function AppProvider({ children }) {
       jwtStr = tokenData.jwt_token || tokenData.token || '';
       clientId = tokenData.client_id || CATALYST_CLIENT_ID;
       const rawScopes = tokenData.scopes || tokenData.scope || CATALYST_SCOPES;
-      scopes = Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes);
+      scopes = ensureNotificationScope(Array.isArray(rawScopes) ? rawScopes.join(',') : String(rawScopes));
     } else {
       jwtStr = tokenData;
       clientId = CATALYST_CLIENT_ID;
@@ -171,14 +183,16 @@ function AppProvider({ children }) {
       return;
     }
     try {
-      console.log('Establishing Catalyst JWT session with client_id:', clientId, 'scopes:', String(scopes).substring(0, 80));
+      console.log('Establishing Catalyst JWT session with client_id:', clientId, 'scopes:', scopes);
       await cat.auth.signinWithJwt(() => Promise.resolve({
         client_id: clientId,
         scopes: scopes,
         jwt_token: jwtStr
       }));
-      console.log('Catalyst JWT session established');
+      console.log('Catalyst JWT session established, waiting before enabling push...');
       pushInitRef.current = false;
+      // Delay to allow session cookies to fully propagate before hitting notification endpoint
+      await new Promise(r => setTimeout(r, 2000));
       enablePush();
     } catch (e) {
       console.error('Catalyst JWT sign-in error:', e);
