@@ -308,7 +308,12 @@ async function generateCatalystToken(catalystApp, email, firstName) {
         last_name: ''
       }
     });
-    console.log(`JWT generated for ${email}, type: ${typeof token}, preview: ${typeof token === 'string' ? token.substring(0, 50) : JSON.stringify(token).substring(0, 100)}`);
+    console.log(`JWT generated for ${email}, type: ${typeof token}, full: ${JSON.stringify(token).substring(0, 300)}`);
+    // token may be a string (just JWT) or an object { jwt_token, client_id, scopes, ... }
+    // Always return as an object for the frontend
+    if (typeof token === 'string') {
+      return { jwt_token: token };
+    }
     return token;
   } catch (e) {
     console.error(`JWT generation error for ${email}:`, e.message || e);

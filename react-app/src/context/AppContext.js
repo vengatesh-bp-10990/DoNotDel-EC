@@ -98,17 +98,29 @@ function AppProvider({ children }) {
     if (!cancelled) setAuthLoading(false);
 
     // Re-establish Catalyst session in background for push notifications
-    const storedJwt = localStorage.getItem('ec_jwt');
-    if (storedJwt && localStorage.getItem('ec_user')) {
+    const storedJwtRaw = localStorage.getItem('ec_jwt');
+    if (storedJwtRaw && localStorage.getItem('ec_user')) {
+      let jwtStr, clientId, scopes;
+      try {
+        const parsed = JSON.parse(storedJwtRaw);
+        jwtStr = parsed.jwt_token || storedJwtRaw;
+        clientId = parsed.client_id || CATALYST_CLIENT_ID;
+        scopes = parsed.scopes || parsed.scope || CATALYST_SCOPES;
+      } catch {
+        // Old format — plain string
+        jwtStr = storedJwtRaw;
+        clientId = CATALYST_CLIENT_ID;
+        scopes = CATALYST_SCOPES;
+      }
       waitForSDK().then(() => {
         if (cancelled) return;
         const cat = window.catalyst;
         if (cat?.auth?.signinWithJwt) {
-          console.log('Restoring Catalyst session with JWT...');
+          console.log('Restoring Catalyst session with client_id:', clientId, 'scopes:', scopes?.substring(0, 60));
           cat.auth.signinWithJwt(() => Promise.resolve({
-            client_id: CATALYST_CLIENT_ID,
-            scopes: CATALYST_SCOPES,
-            jwt_token: storedJwt
+            client_id: clientId,
+            scopes: scopes,
+            jwt_token: jwtStr
           }))
             .then(() => { console.log('Catalyst session restored'); enablePush(); })
             .catch(e => { console.error('JWT session restore failed:', e); enablePush(); });
@@ -129,13 +141,27 @@ function AppProvider({ children }) {
   }, []);
 
   // Establish a Catalyst Auth session using JWT from our backend (generateCustomToken)
-  const establishCatalystSession = useCallback(async (jwtToken) => {
-    if (!jwtToken) { console.warn('No JWT token to establish session'); return; }
-    console.log('JWT token received, type:', typeof jwtToken, 'preview:', typeof jwtToken === 'string' ? jwtToken.substring(0, 60) + '...' : JSON.stringify(jwtToken).substring(0, 100));
-    // If the token is an object (e.g. { jwt_token: "..." }), extract the string
-    const tokenStr = typeof jwtToken === 'object' ? (jwtToken.jwt_token || jwtToken.token || JSON.stringify(jwtToken)) : jwtToken;
-    // Persist JWT so we can re-establish session on page reload
-    localStorage.setItem('ec_jwt', tokenStr);
+  const establishCatalystSession = useCallback(async (tokenData) => {
+    if (!tokenData) { console.warn('No JWT token to establish session'); return; }
+    console.log('Token data received:', typeof tokenData, JSON.stringify(tokenData).substring(0, 200));
+
+    // tokenData can be a string (just JWT) or object { jwt_token, client_id, scopes, ... }
+    let jwtStr, clientId, scopes;
+    if (typeof tokenData === 'object' && tokenData !== null) {
+      jwtStr = tokenData.jwt_token || tokenData.token || '';
+      clientId = tokenData.client_id || CATALYST_CLIENT_ID;
+      scopes = tokenData.scopes || tokenData.scope || CATALYST_SCOPES;
+    } else {
+      jwtStr = tokenData;
+      clientId = CATALYST_CLIENT_ID;
+      scopes = CATALYST_SCOPES;
+    }
+
+    if (!jwtStr) { console.warn('No JWT string found in token data'); return; }
+
+    // Persist full token object so we can re-establish session on page reload
+    localStorage.setItem('ec_jwt', JSON.stringify({ jwt_token: jwtStr, client_id: clientId, scopes }));
+
     await waitForSDK();
     const cat = window.catalyst;
     if (!cat?.auth?.signinWithJwt) {
@@ -143,11 +169,11 @@ function AppProvider({ children }) {
       return;
     }
     try {
-      console.log('Establishing Catalyst JWT session...');
+      console.log('Establishing Catalyst JWT session with client_id:', clientId, 'scopes:', scopes?.substring(0, 60));
       await cat.auth.signinWithJwt(() => Promise.resolve({
-        client_id: CATALYST_CLIENT_ID,
-        scopes: CATALYST_SCOPES,
-        jwt_token: tokenStr
+        client_id: clientId,
+        scopes: scopes,
+        jwt_token: jwtStr
       }));
       console.log('Catalyst JWT session established');
       pushInitRef.current = false;
