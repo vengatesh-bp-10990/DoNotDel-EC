@@ -59,34 +59,18 @@ function AppProvider({ children }) {
     } catch (e) { console.error('Push notification error:', e); }
   }, []);
 
-  // Load Catalyst SDK init.js dynamically (prevents auto-login form on page load)
-  const loadCatalystSDK = useCallback(() => {
+  // Wait for Catalyst SDK to be ready
+  const waitForSDK = useCallback(() => {
     return new Promise((resolve) => {
-      if (window.catalyst?.auth?.signinWithJwt) { resolve(true); return; }
-      // Check if init.js script is already loading
-      if (document.querySelector('script[src*="/__catalyst/sdk/init.js"]')) {
-        const wait = () => {
-          if (window.catalyst?.auth) resolve(true);
-          else setTimeout(wait, 100);
-        };
-        setTimeout(wait, 200);
-        return;
-      }
-      const s = document.createElement('script');
-      s.src = '/__catalyst/sdk/init.js';
-      s.onload = () => {
-        const wait = () => {
-          if (window.catalyst?.auth) resolve(true);
-          else setTimeout(wait, 100);
-        };
-        setTimeout(wait, 200);
+      const check = () => {
+        if (window.catalyst?.auth) resolve(true);
+        else setTimeout(check, 150);
       };
-      s.onerror = () => resolve(false);
-      document.head.appendChild(s);
+      check();
     });
   }, []);
 
-  // Check auth on mount — localStorage only (init.js not loaded yet to avoid auto-login)
+  // Check auth on mount
   useEffect(() => {
     let cancelled = false;
     // Restore from localStorage immediately (fast paint)
@@ -94,21 +78,30 @@ function AppProvider({ children }) {
       const saved = localStorage.getItem('ec_user');
       if (saved && !cancelled) {
         setUser(JSON.parse(saved));
-        // Re-establish Catalyst session from stored JWT for push notifications
-        const storedJwt = localStorage.getItem('ec_jwt');
-        if (storedJwt) {
-          establishCatalystSession(storedJwt);
-        } else {
-          // No JWT stored — at least try loading SDK for push
-          loadCatalystSDK().then((ok) => {
-            if (ok && !cancelled) enablePush();
-          });
-        }
       }
     } catch { localStorage.removeItem('ec_user'); }
     if (!cancelled) setAuthLoading(false);
+
+    // Re-establish Catalyst session in background for push notifications
+    const storedJwt = localStorage.getItem('ec_jwt');
+    if (storedJwt && localStorage.getItem('ec_user')) {
+      waitForSDK().then(() => {
+        if (cancelled) return;
+        const cat = window.catalyst;
+        if (cat?.auth?.signinWithJwt) {
+          cat.auth.signinWithJwt(() => Promise.resolve({ jwt_token: storedJwt }))
+            .then(() => { console.log('Catalyst session restored'); enablePush(); })
+            .catch(e => { console.log('JWT session restore failed:', e.message); enablePush(); });
+        } else {
+          enablePush();
+        }
+      });
+    } else if (localStorage.getItem('ec_user')) {
+      waitForSDK().then(() => { if (!cancelled) enablePush(); });
+    }
+
     return () => { cancelled = true; };
-  }, [enablePush, loadCatalystSDK, establishCatalystSession]);
+  }, [enablePush, waitForSDK]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
@@ -116,34 +109,25 @@ function AppProvider({ children }) {
   }, []);
 
   // Establish a Catalyst Auth session using JWT from our backend (generateCustomToken)
-  // This gives the user a proper Catalyst session — needed for push notifications
   const establishCatalystSession = useCallback(async (jwtToken) => {
     if (!jwtToken) return;
     // Persist JWT so we can re-establish session on page reload
     localStorage.setItem('ec_jwt', jwtToken);
-    // Load Catalyst SDK dynamically (if not already loaded)
-    const sdkReady = await loadCatalystSDK();
-    if (!sdkReady) { console.warn('Catalyst SDK failed to load'); return; }
+    await waitForSDK();
     const cat = window.catalyst;
     if (!cat?.auth?.signinWithJwt) {
       console.warn('Catalyst SDK signinWithJwt not available');
       return;
     }
     try {
-      await cat.auth.signinWithJwt(() => {
-        return Promise.resolve({
-          jwt_token: jwtToken,
-        });
-      });
+      await cat.auth.signinWithJwt(() => Promise.resolve({ jwt_token: jwtToken }));
       console.log('Catalyst JWT session established');
-      // Now enable push with the new session
       pushInitRef.current = false;
       enablePush();
     } catch (e) {
       console.error('Catalyst JWT sign-in error:', e);
-      // Don't block the user — they can still use the app, just no push
     }
-  }, [enablePush, loadCatalystSDK]);
+  }, [enablePush, waitForSDK]);
 
   const logoutUser = useCallback(() => {
     setUser(null);
@@ -152,12 +136,8 @@ function AppProvider({ children }) {
     localStorage.removeItem('cartItems');
     setCartItems([]);
     pushInitRef.current = false;
-    try {
-      if (window.catalyst?.auth?.signOut) {
-        window.catalyst.auth.signOut(window.location.origin + '/');
-        return;
-      }
-    } catch (e) { console.error('Catalyst signOut error:', e); }
+    // Redirect to home (don't use catalyst.auth.signOut — it causes redirect issues)
+    window.location.href = '/';
   }, []);
 
   /* ─── Cart State ─── */

@@ -28,8 +28,20 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>Homemade Products</title>
-    <!-- Catalyst Web SDK (base only — init.js loaded dynamically to prevent auto-login form) -->
+    <!-- Catalyst Web SDK -->
     <script src="https://static.zohocdn.com/catalyst/sdk/js/4.5.0/catalystWebSDK.js"></script>
+    <script src="/__catalyst/sdk/init.js"></script>
+    <script>
+      // Prevent Catalyst SDK from auto-rendering its login form.
+      // We use our own custom login/signup forms.
+      (function() {
+        var origSignIn = window.catalyst && window.catalyst.auth && window.catalyst.auth.signIn;
+        if (window.catalyst && window.catalyst.auth) {
+          window.catalyst.auth._origSignIn = origSignIn;
+          window.catalyst.auth.signIn = function() { /* no-op: we use custom forms */ };
+        }
+      })();
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
