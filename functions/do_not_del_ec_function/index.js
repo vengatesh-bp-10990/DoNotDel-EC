@@ -205,6 +205,20 @@ app.post('/signup', async (req, res) => {
     const role = email === ADMIN_EMAIL ? 'Admin' : 'Customer';
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name, Email: email, Phone: phone || '', Password_Hash: hash, Role: role });
     await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(name));
+
+    // Register user in Catalyst Authentication so they appear under Authentication > Users
+    // This enables push notifications for the user
+    try {
+      await catalystApp.userManagement().registerUser(
+        { platform_type: 'web' },
+        { first_name: name, last_name: '', email_id: email }
+      );
+      console.log(`Catalyst Auth: Registered ${email}`);
+    } catch (authErr) {
+      // Don't fail the signup if Catalyst Auth registration fails (e.g. user already exists in Auth)
+      console.log(`Catalyst Auth registration note for ${email}:`, authErr.message || authErr);
+    }
+
     res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
   } catch (error) { console.error('Signup error:', error); res.status(500).json({ success: false, message: 'Signup failed' }); }
 });
