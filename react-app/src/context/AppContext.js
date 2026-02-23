@@ -94,27 +94,33 @@ function AppProvider({ children }) {
       const saved = localStorage.getItem('ec_user');
       if (saved && !cancelled) {
         setUser(JSON.parse(saved));
-        // For returning users, load SDK in background for push notifications
-        loadCatalystSDK().then((ok) => {
-          if (ok && !cancelled) enablePush();
-        });
+        // Re-establish Catalyst session from stored JWT for push notifications
+        const storedJwt = localStorage.getItem('ec_jwt');
+        if (storedJwt) {
+          establishCatalystSession(storedJwt);
+        } else {
+          // No JWT stored — at least try loading SDK for push
+          loadCatalystSDK().then((ok) => {
+            if (ok && !cancelled) enablePush();
+          });
+        }
       }
     } catch { localStorage.removeItem('ec_user'); }
     if (!cancelled) setAuthLoading(false);
     return () => { cancelled = true; };
-  }, [enablePush, loadCatalystSDK]);
+  }, [enablePush, loadCatalystSDK, establishCatalystSession]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('ec_user', JSON.stringify(userData));
-    // Try to enable push notifications for this session
-    enablePush();
-  }, [enablePush]);
+  }, []);
 
   // Establish a Catalyst Auth session using JWT from our backend (generateCustomToken)
   // This gives the user a proper Catalyst session — needed for push notifications
   const establishCatalystSession = useCallback(async (jwtToken) => {
     if (!jwtToken) return;
+    // Persist JWT so we can re-establish session on page reload
+    localStorage.setItem('ec_jwt', jwtToken);
     // Load Catalyst SDK dynamically (if not already loaded)
     const sdkReady = await loadCatalystSDK();
     if (!sdkReady) { console.warn('Catalyst SDK failed to load'); return; }
@@ -142,6 +148,7 @@ function AppProvider({ children }) {
   const logoutUser = useCallback(() => {
     setUser(null);
     localStorage.removeItem('ec_user');
+    localStorage.removeItem('ec_jwt');
     localStorage.removeItem('cartItems');
     setCartItems([]);
     pushInitRef.current = false;
