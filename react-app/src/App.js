@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import Cart from './pages/Cart';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import CatalystAuthCallback from './pages/CatalystAuthCallback';
 import Checkout from './pages/Checkout';
 import Profile from './pages/Profile';
 import Orders from './pages/Orders';
@@ -183,6 +184,7 @@ function App() {
                   <Route path="/cart" element={<Cart />} />
                   <Route path="/checkout" element={<Checkout />} />
                   <Route path="/login" element={<Login />} />
+                  <Route path="/login/accounts/*" element={<CatalystAuthCallback />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/orders" element={<Orders />} />
