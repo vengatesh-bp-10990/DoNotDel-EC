@@ -57,8 +57,10 @@ function AppProvider({ children }) {
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
+  const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
+
   // ─── Catalyst Push Notifications Setup ───
-  const setupCatalystPush = useCallback(async (jwtToken) => {
+  const setupCatalystPush = useCallback(async (jwtToken, email) => {
     if (pushInitRef.current) return;
     try {
       pushInitRef.current = true;
@@ -71,23 +73,50 @@ function AppProvider({ children }) {
       // Establish Catalyst session with JWT
       if (jwtToken && window.catalyst?.auth?.signinWithJwt) {
         try {
-          // Build the token details object
+          // Build the token details object from initial token
           let tokenDetails;
           if (typeof jwtToken === 'object') {
             tokenDetails = jwtToken;
-            console.log('Catalyst: JWT token object keys:', Object.keys(jwtToken));
           } else {
             tokenDetails = { jwt_token: jwtToken };
           }
-          console.log('Catalyst: calling signinWithJwt with async callback...');
-          // signinWithJwt expects a CALLBACK that returns a Promise of token details
-          const signInResult = await window.catalyst.auth.signinWithJwt(async () => tokenDetails);
+          console.log('Catalyst: JWT token keys:', Object.keys(tokenDetails));
+
+          // signinWithJwt expects a callback that returns a Promise of token details.
+          // The SDK calls this callback whenever it needs a (fresh) JWT.
+          const userEmail = email || localStorage.getItem('ec_push_email');
+          const fetchJwt = async () => {
+            // Try fetching a fresh JWT from the backend
+            if (userEmail) {
+              try {
+                const resp = await fetch(`${API_BASE}/auth/refresh-jwt`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: userEmail })
+                });
+                if (resp.ok) {
+                  const data = await resp.json();
+                  if (data.success && data.tokenData) {
+                    console.log('Catalyst: fetched fresh JWT');
+                    localStorage.setItem('ec_jwt', JSON.stringify(data.tokenData));
+                    return data.tokenData;
+                  }
+                }
+              } catch (e) {
+                console.warn('Catalyst: fresh JWT fetch failed, using stored token');
+              }
+            }
+            return tokenDetails;
+          };
+
+          console.log('Catalyst: calling signinWithJwt...');
+          const signInResult = await window.catalyst.auth.signinWithJwt(fetchJwt);
           console.log('Catalyst: signinWithJwt result:', signInResult);
         } catch (e) {
           console.error('Catalyst: signinWithJwt error:', e.message || e, e);
         }
       } else {
-        console.warn('Catalyst: No JWT token or signinWithJwt not available. jwtToken:', !!jwtToken, 'signinWithJwt:', !!window.catalyst?.auth?.signinWithJwt);
+        console.warn('Catalyst: No JWT token or signinWithJwt not available');
       }
 
       // Enable Catalyst Push Notifications (WebSocket-based real-time)
@@ -133,7 +162,7 @@ function AppProvider({ children }) {
         const savedJwt = localStorage.getItem('ec_jwt');
         if (parsed?.Email) {
           const jwt = savedJwt ? JSON.parse(savedJwt) : null;
-          setupCatalystPush(jwt);
+          setupCatalystPush(jwt, parsed.Email);
         }
       }
     } catch { localStorage.removeItem('ec_user'); }
@@ -152,15 +181,19 @@ function AppProvider({ children }) {
     if (tokenData) {
       localStorage.setItem('ec_jwt', JSON.stringify(tokenData));
     }
+    if (email) {
+      localStorage.setItem('ec_push_email', email);
+    }
     // Setup Catalyst Push with JWT token
     pushInitRef.current = false;
-    await setupCatalystPush(tokenData);
+    await setupCatalystPush(tokenData, email);
   }, [setupCatalystPush]);
 
   const logoutUser = useCallback(() => {
     setUser(null);
     localStorage.removeItem('ec_user');
     localStorage.removeItem('ec_jwt');
+    localStorage.removeItem('ec_push_email');
     localStorage.removeItem('cartItems');
     setCartItems([]);
     pushInitRef.current = false;
