@@ -386,6 +386,63 @@ app.get('/notifications/check', async (req, res) => {
   }
 });
 
+// ─── SSE Notification Stream ───
+// Server-Sent Events endpoint for real-time notifications
+app.get('/notifications/stream', (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.status(400).json({ error: 'email required' });
+
+  const catalystApp = initCatalyst(req);
+
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'Access-Control-Allow-Origin': '*'
+  });
+  // Send initial connection event
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', message: 'SSE connected' })}\n\n`);
+  console.log(`SSE: connected for ${email}`);
+
+  let alive = true;
+
+  // Check for notifications every 5 seconds
+  const checker = setInterval(async () => {
+    if (!alive) return;
+    try {
+      const notifications = await getAndClearNotifications(catalystApp, email);
+      if (notifications && notifications.length > 0) {
+        for (const notif of notifications) {
+          res.write(`data: ${JSON.stringify(notif)}\n\n`);
+        }
+        console.log(`SSE: sent ${notifications.length} notifications to ${email}`);
+      }
+    } catch (e) {
+      console.error('SSE check error:', e.message);
+    }
+  }, 5000);
+
+  // Send heartbeat every 30 seconds to keep connection alive
+  const heartbeat = setInterval(() => {
+    if (!alive) return;
+    try {
+      res.write(': heartbeat\n\n');
+    } catch (e) {
+      alive = false;
+    }
+  }, 30000);
+
+  // Cleanup on disconnect
+  req.on('close', () => {
+    alive = false;
+    clearInterval(checker);
+    clearInterval(heartbeat);
+    console.log(`SSE: disconnected for ${email}`);
+  });
+});
+
 // ─── Test Notification Endpoint (with debug info) ───
 app.post('/notifications/test', async (req, res) => {
   try {

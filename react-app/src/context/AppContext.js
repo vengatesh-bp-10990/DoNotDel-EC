@@ -50,107 +50,72 @@ function AppProvider({ children }) {
   /* ─── User State ─── */
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const pushInitRef = useRef(false);
+  const sseRef = useRef(null);
 
   /* ─── Auth Modal State ─── */
   const [showAuthModal, setShowAuthModal] = useState(false);
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
-  const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
-
-  // ─── Catalyst Push Notifications Setup ───
-  const setupCatalystPush = useCallback(async (jwtToken, email) => {
-    if (pushInitRef.current) return;
-    try {
-      pushInitRef.current = true;
-
-      // Request browser notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
-
-      // Establish Catalyst session with JWT
-      if (jwtToken && window.catalyst?.auth?.signinWithJwt) {
-        try {
-          // Build the token details object from initial token
-          let tokenDetails;
-          if (typeof jwtToken === 'object') {
-            tokenDetails = jwtToken;
-          } else {
-            tokenDetails = { jwt_token: jwtToken };
-          }
-          console.log('Catalyst: JWT token keys:', Object.keys(tokenDetails));
-
-          // signinWithJwt expects a callback that returns a Promise of token details.
-          // The SDK calls this callback whenever it needs a (fresh) JWT.
-          const userEmail = email || localStorage.getItem('ec_push_email');
-          const fetchJwt = async () => {
-            // Try fetching a fresh JWT from the backend
-            if (userEmail) {
-              try {
-                const resp = await fetch(`${API_BASE}/auth/refresh-jwt`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email: userEmail })
-                });
-                if (resp.ok) {
-                  const data = await resp.json();
-                  if (data.success && data.tokenData) {
-                    console.log('Catalyst: fetched fresh JWT');
-                    localStorage.setItem('ec_jwt', JSON.stringify(data.tokenData));
-                    return data.tokenData;
-                  }
-                }
-              } catch (e) {
-                console.warn('Catalyst: fresh JWT fetch failed, using stored token');
-              }
-            }
-            return tokenDetails;
-          };
-
-          console.log('Catalyst: calling signinWithJwt...');
-          const signInResult = await window.catalyst.auth.signinWithJwt(fetchJwt);
-          console.log('Catalyst: signinWithJwt result:', signInResult);
-        } catch (e) {
-          console.error('Catalyst: signinWithJwt error:', e.message || e, e);
-        }
-      } else {
-        console.warn('Catalyst: No JWT token or signinWithJwt not available');
-      }
-
-      // Enable Catalyst Push Notifications (WebSocket-based real-time)
-      if (window.catalyst?.notification?.enableNotification) {
-        try {
-          console.log('Catalyst: calling enableNotification...');
-          const enableResult = await window.catalyst.notification.enableNotification();
-          console.log('Catalyst: enableNotification result:', enableResult);
-
-          // Handle incoming push messages — plays sound + shows browser notification
-          window.catalyst.notification.messageHandler = (msg) => {
-            console.log('Catalyst push received:', msg);
-            try {
-              const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
-              window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
-              playNotificationSound();
-              showBrowserNotification(data);
-            } catch (e) { console.error('Push message parse error:', e); }
-          };
-        } catch (e) {
-          console.error('Catalyst: enableNotification failed:', e.message || e, e);
-          pushInitRef.current = false;
-        }
-      } else {
-        console.warn('Catalyst: notification API not available');
-        pushInitRef.current = false;
-      }
-    } catch (e) {
-      console.error('Catalyst push setup error:', e);
-      pushInitRef.current = false;
+  // ─── SSE (Server-Sent Events) Notifications ───
+  const setupNotifications = useCallback((email) => {
+    if (!email) return;
+    // Close existing connection
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
     }
+
+    // Request browser notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // Connect to SSE stream
+    const url = `/server/do_not_del_ec_function/notifications/stream?email=${encodeURIComponent(email)}`;
+    console.log('SSE: connecting to', url);
+    const es = new EventSource(url);
+
+    es.onopen = () => {
+      console.log('SSE: connection opened');
+    };
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'CONNECTED') {
+          console.log('SSE: server confirmed connection');
+          return;
+        }
+        console.log('SSE: notification received:', data);
+        // Dispatch event for UI components (admin panel, order tracking, etc.)
+        window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
+        playNotificationSound();
+        showBrowserNotification(data);
+      } catch (e) {
+        console.error('SSE parse error:', e);
+      }
+    };
+
+    es.onerror = (e) => {
+      console.log('SSE: connection error, will auto-reconnect...', es.readyState);
+      // EventSource auto-reconnects with ~3 second delay
+    };
+
+    sseRef.current = es;
   }, []);
 
-  // Check auth on mount — restore Catalyst push session
+  // Close SSE on unmount
+  useEffect(() => {
+    return () => {
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+    };
+  }, []);
+
+  // Check auth on mount — restore session and start SSE
   useEffect(() => {
     let cancelled = false;
     try {
@@ -158,45 +123,40 @@ function AppProvider({ children }) {
       if (saved && !cancelled) {
         const parsed = JSON.parse(saved);
         setUser(parsed);
-        // Restore Catalyst push session from saved JWT
-        const savedJwt = localStorage.getItem('ec_jwt');
         if (parsed?.Email) {
-          const jwt = savedJwt ? JSON.parse(savedJwt) : null;
-          setupCatalystPush(jwt, parsed.Email);
+          setupNotifications(parsed.Email);
         }
       }
     } catch { localStorage.removeItem('ec_user'); }
     if (!cancelled) setAuthLoading(false);
 
     return () => { cancelled = true; };
-  }, [setupCatalystPush]);
+  }, [setupNotifications]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('ec_user', JSON.stringify(userData));
   }, []);
 
-  // After login/signup, establish Catalyst session for push notifications
+  // After login/signup, start SSE notifications
   const establishCatalystSession = useCallback(async (tokenData, email) => {
-    if (tokenData) {
-      localStorage.setItem('ec_jwt', JSON.stringify(tokenData));
-    }
     if (email) {
-      localStorage.setItem('ec_push_email', email);
+      setupNotifications(email);
     }
-    // Setup Catalyst Push with JWT token
-    pushInitRef.current = false;
-    await setupCatalystPush(tokenData, email);
-  }, [setupCatalystPush]);
+  }, [setupNotifications]);
 
   const logoutUser = useCallback(() => {
+    // Close SSE connection
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+    }
     setUser(null);
     localStorage.removeItem('ec_user');
     localStorage.removeItem('ec_jwt');
     localStorage.removeItem('ec_push_email');
     localStorage.removeItem('cartItems');
     setCartItems([]);
-    pushInitRef.current = false;
     window.location.href = '/';
   }, []);
 
