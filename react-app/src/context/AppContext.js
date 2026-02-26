@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 const AppContext = createContext();
-const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
 // ─── Show browser notification helper ───
 function showBrowserNotification(data) {
@@ -72,20 +71,18 @@ function AppProvider({ children }) {
       // Establish Catalyst session with JWT
       if (jwtToken && window.catalyst?.auth?.signinWithJwt) {
         try {
-          let jwt;
+          // Build the token details object
+          let tokenDetails;
           if (typeof jwtToken === 'object') {
-            jwt = jwtToken.jwt_token || jwtToken.token;
+            tokenDetails = jwtToken;
             console.log('Catalyst: JWT token object keys:', Object.keys(jwtToken));
           } else {
-            jwt = jwtToken;
+            tokenDetails = { jwt_token: jwtToken };
           }
-          if (jwt) {
-            console.log('Catalyst: calling signinWithJwt, token length:', jwt.length);
-            const signInResult = await window.catalyst.auth.signinWithJwt(jwt);
-            console.log('Catalyst: signinWithJwt result:', signInResult);
-          } else {
-            console.warn('Catalyst: No JWT string found in tokenData');
-          }
+          console.log('Catalyst: calling signinWithJwt with callback...');
+          // signinWithJwt expects a CALLBACK that returns token details, not the token itself
+          const signInResult = await window.catalyst.auth.signinWithJwt(() => tokenDetails);
+          console.log('Catalyst: signinWithJwt result:', signInResult);
         } catch (e) {
           console.error('Catalyst: signinWithJwt error:', e.message || e, e);
         }
