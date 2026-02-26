@@ -360,18 +360,18 @@ app.get('/notifications/check', async (req, res) => {
   }
 });
 
-// ─── Test Notification Endpoint ───
+// ─── Test Notification Endpoint (with debug info) ───
 app.post('/notifications/test', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: 'email required' });
     const catalystApp = initCatalyst(req);
-    await notifyUsers(catalystApp, {
+    const result = await notifyUsers(catalystApp, {
       type: 'TEST',
       title: '🔔 Test Notification',
       body: `Notifications are working for ${email}!`,
     }, [email]);
-    res.json({ success: true, message: 'Test notification sent! You should see it instantly.' });
+    res.json({ success: true, message: 'Test notification sent!', debug: result });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -379,20 +379,22 @@ app.post('/notifications/test', async (req, res) => {
 
 // ─── Helper: Send notification to users via Catalyst Push + Cache fallback ───
 async function notifyUsers(catalystApp, message, emails) {
-  if (!emails || emails.length === 0) return;
+  if (!emails || emails.length === 0) return { pushResult: null, cached: false };
   // Store in cache queue as fallback for offline users
   for (const email of emails) {
     await addNotification(catalystApp, email, message);
   }
   // Send real-time push via Catalyst Push Notifications
   try {
-    await catalystApp.pushNotification().web().sendNotification(
+    const result = await catalystApp.pushNotification().web().sendNotification(
       JSON.stringify(message),
       emails
     );
-    console.log('Push: sent to', emails.join(', '));
+    console.log('Push: sent to', emails.join(', '), '| result:', JSON.stringify(result));
+    return { pushResult: result, pushSuccess: true, cached: true };
   } catch (e) {
-    console.error('Push send error (cache fallback available):', e.message);
+    console.error('Push send error:', e.message, '| status:', e.statusCode || 'N/A', '| full:', JSON.stringify(e));
+    return { pushResult: null, pushError: e.message, pushSuccess: false, cached: true };
   }
 }
 

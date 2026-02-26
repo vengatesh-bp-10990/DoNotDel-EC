@@ -124,24 +124,7 @@ function AppProvider({ children }) {
     }
   }, []);
 
-  // Poll notifications from cache (fallback for missed real-time push)
-  const pollNotifications = useCallback(async (email) => {
-    if (!email) return;
-    try {
-      const res = await fetch(`${API_BASE}/notifications/check?email=${encodeURIComponent(email)}`);
-      const data = await res.json();
-      if (data.success && data.notifications?.length > 0) {
-        console.log('Poll: got', data.notifications.length, 'cached notifications');
-        data.notifications.forEach(notif => {
-          window.dispatchEvent(new CustomEvent('catalyst-push', { detail: notif }));
-          showBrowserNotification(notif);
-        });
-        playNotificationSound();
-      }
-    } catch (e) { console.error('Notification poll error:', e); }
-  }, []);
-
-  // Check auth on mount
+  // Check auth on mount — restore Catalyst push session
   useEffect(() => {
     let cancelled = false;
     try {
@@ -154,59 +137,13 @@ function AppProvider({ children }) {
         if (parsed?.Email) {
           const jwt = savedJwt ? JSON.parse(savedJwt) : null;
           setupCatalystPush(jwt);
-          pollNotifications(parsed.Email);
         }
       }
     } catch { localStorage.removeItem('ec_user'); }
     if (!cancelled) setAuthLoading(false);
 
     return () => { cancelled = true; };
-  }, [setupCatalystPush, pollNotifications]);
-
-  // Poll for cached notifications when tab becomes visible + every 10s while visible
-  useEffect(() => {
-    let intervalId = null;
-
-    const getUserEmail = () => {
-      try {
-        const saved = localStorage.getItem('ec_user');
-        if (saved) return JSON.parse(saved)?.Email;
-      } catch {}
-      return null;
-    };
-
-    const checkNow = () => {
-      const email = getUserEmail();
-      if (email) pollNotifications(email);
-    };
-
-    // Start/stop polling based on tab visibility
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        checkNow(); // Immediate check on tab focus
-        if (!intervalId) {
-          intervalId = setInterval(checkNow, 10000); // Every 10 seconds
-        }
-      } else {
-        if (intervalId) {
-          clearInterval(intervalId);
-          intervalId = null;
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    // Start polling immediately if tab is visible
-    if (document.visibilityState === 'visible') {
-      intervalId = setInterval(checkNow, 10000);
-    }
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [pollNotifications]);
+  }, [setupCatalystPush]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
@@ -221,9 +158,7 @@ function AppProvider({ children }) {
     // Setup Catalyst Push with JWT token
     pushInitRef.current = false;
     await setupCatalystPush(tokenData);
-    // Poll for any queued notifications
-    if (email) await pollNotifications(email);
-  }, [setupCatalystPush, pollNotifications]);
+  }, [setupCatalystPush]);
 
   const logoutUser = useCallback(() => {
     setUser(null);

@@ -168,7 +168,12 @@ function Profile() {
                 });
                 const data = await res.json();
                 if (data.success) {
-                  setPushStatus('✅ Test notification sent! You should hear a sound and see a notification.');
+                  const debug = data.debug || {};
+                  if (debug.pushSuccess) {
+                    setPushStatus(`✅ Push sent successfully! You should hear a sound and see a notification.`);
+                  } else {
+                    setPushStatus(`⚠️ Saved to queue but push failed: ${debug.pushError || 'unknown'}. Check console for details.`);
+                  }
                 } else {
                   setPushStatus(`❌ ${data.message}`);
                 }
