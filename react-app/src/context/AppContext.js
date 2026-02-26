@@ -79,9 +79,9 @@ function AppProvider({ children }) {
           } else {
             tokenDetails = { jwt_token: jwtToken };
           }
-          console.log('Catalyst: calling signinWithJwt with callback...');
-          // signinWithJwt expects a CALLBACK that returns token details, not the token itself
-          const signInResult = await window.catalyst.auth.signinWithJwt(() => tokenDetails);
+          console.log('Catalyst: calling signinWithJwt with async callback...');
+          // signinWithJwt expects a CALLBACK that returns a Promise of token details
+          const signInResult = await window.catalyst.auth.signinWithJwt(async () => tokenDetails);
           console.log('Catalyst: signinWithJwt result:', signInResult);
         } catch (e) {
           console.error('Catalyst: signinWithJwt error:', e.message || e, e);
