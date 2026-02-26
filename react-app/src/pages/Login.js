@@ -37,7 +37,7 @@ function Login() {
       const data = await res.json();
       if (!res.ok || !data.success) { setError(data.message || 'Google sign-in failed'); setGoogleLoading(false); return; }
       loginUser(data.user);
-      await establishCatalystSession(null, data.user?.Email);
+      await establishCatalystSession(data.tokenData, data.user?.Email);
       navigate(data.user?.Role === 'Admin' ? '/admin' : '/', { replace: true });
     } catch (err) { setError('Google sign-in failed. Please try again.'); }
     setGoogleLoading(false);
@@ -92,7 +92,7 @@ function Login() {
       const data = await res.json();
       if (!res.ok || !data.success) { setError(data.message || 'Login failed'); setLoading(false); return; }
       loginUser(data.user);
-      await establishCatalystSession(null, data.user?.Email);
+      await establishCatalystSession(data.tokenData, data.user?.Email);
       navigate(data.user?.Role === 'Admin' ? '/admin' : '/', { replace: true });
     } catch (err) { setError('Something went wrong. Please try again.'); }
     setLoading(false);

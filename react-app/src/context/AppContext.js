@@ -3,17 +3,28 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 const AppContext = createContext();
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
-// VAPID public key for Web Push (generated once, matches backend private key)
-const VAPID_PUBLIC_KEY = 'BJyNqcoYniSvYg2w1NJx9hiHQRrdVY0dkA0-LAnEhDdOIgdePw8My9AvRpGLfVmMLmaqHVLg13xLdhWTwBcwaFM';
-
-// Convert URL-safe base64 to Uint8Array (needed for applicationServerKey)
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-  return outputArray;
+// ─── Notification sound (Web Audio API — no external files) ───
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const playTone = (freq, startTime, duration) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
+      gain.gain.linearRampToValueAtTime(0, startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+    const now = ctx.currentTime;
+    playTone(880, now, 0.15);
+    playTone(1320, now + 0.18, 0.25);
+    setTimeout(() => ctx.close(), 1000);
+  } catch (e) { /* sound not supported */ }
 }
 
 function AppProvider({ children }) {
@@ -27,117 +38,152 @@ function AppProvider({ children }) {
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
-  // ─── Web Push: Subscribe and send subscription to backend ───
-  const subscribeToPush = useCallback(async (email) => {
+  // ─── Catalyst Push Notifications Setup ───
+  const setupCatalystPush = useCallback(async (jwtToken) => {
     if (pushInitRef.current) return;
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      console.warn('Push: Browser does not support Web Push');
-      return;
-    }
-
     try {
       pushInitRef.current = true;
 
-      // Register service worker
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      console.log('Push: Service Worker registered');
-
-      // Wait for the SW to be active
-      const sw = registration.active || registration.waiting || registration.installing;
-      if (sw && sw.state !== 'activated') {
-        await new Promise((resolve) => {
-          sw.addEventListener('statechange', () => { if (sw.state === 'activated') resolve(); });
-        });
+      // Request browser notification permission
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
       }
 
-      // Request notification permission
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        console.warn('Push: Notification permission denied');
-        pushInitRef.current = false;
-        return;
+      // Establish Catalyst session with JWT
+      if (jwtToken && window.catalyst?.auth?.signinWithJwt) {
+        try {
+          const jwt = typeof jwtToken === 'object' ? (jwtToken.jwt_token || jwtToken.token) : jwtToken;
+          if (jwt) {
+            await window.catalyst.auth.signinWithJwt(jwt);
+            console.log('Catalyst: session established via JWT');
+          }
+        } catch (e) {
+          console.warn('Catalyst: signinWithJwt error:', e.message || e);
+        }
       }
 
-      // Subscribe to push
-      let subscription = await registration.pushManager.getSubscription();
-      if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-        });
-        console.log('Push: New subscription created');
+      // Enable Catalyst Push Notifications (WebSocket-based real-time)
+      if (window.catalyst?.notification?.enableNotification) {
+        try {
+          await window.catalyst.notification.enableNotification();
+          console.log('Catalyst: Push notifications enabled');
+
+          // Handle incoming push messages — plays sound + shows browser notification
+          window.catalyst.notification.messageHandler = (msg) => {
+            console.log('Catalyst push received:', msg);
+            try {
+              const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
+
+              // Dispatch event for components (Orders, OrderTracking, AdminLayout)
+              window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
+
+              // Play notification sound
+              playNotificationSound();
+
+              // Show browser notification (visible even from a background tab)
+              if ('Notification' in window && Notification.permission === 'granted') {
+                let title = 'Homemade Products';
+                let body = 'You have a new notification';
+                if (data.type === 'NEW_ORDER') {
+                  title = '🛒 New Order Received!';
+                  body = `${data.customerName || 'Customer'} — ₹${parseFloat(data.total || 0).toFixed(0)}`;
+                } else if (data.type === 'ORDER_STATUS') {
+                  title = '📦 Order Update';
+                  body = `Order #${data.orderId} — ${data.status}`;
+                } else if (data.type === 'TEST') {
+                  title = data.title || '🔔 Test Notification';
+                  body = data.body || 'Notifications are working!';
+                }
+                const n = new Notification(title, { body, icon: '/logo192.png', tag: 'notif-' + Date.now(), renotify: true });
+                n.onclick = () => { window.focus(); n.close(); };
+                setTimeout(() => n.close(), 8000);
+              }
+            } catch (e) { console.error('Push message parse error:', e); }
+          };
+        } catch (e) {
+          console.error('Catalyst: enableNotification failed:', e.message || e);
+          pushInitRef.current = false;
+        }
       } else {
-        console.log('Push: Using existing subscription');
-      }
-
-      // Send subscription to backend
-      const res = await fetch(`${API_BASE}/push/subscribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, subscription: subscription.toJSON() }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        console.log('Push: Subscription saved to backend');
-      } else {
-        console.warn('Push: Failed to save subscription:', data.message);
+        console.warn('Catalyst: notification API not available');
         pushInitRef.current = false;
       }
     } catch (e) {
-      console.error('Push subscription error:', e);
+      console.error('Catalyst push setup error:', e);
       pushInitRef.current = false;
     }
   }, []);
 
-  // Listen for Service Worker messages (in-app push forwarding)
-  useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
-    const handler = (event) => {
-      if (event.data?.type === 'PUSH_RECEIVED') {
-        const payload = event.data.payload;
-        console.log('Push message received in-app:', payload);
-        window.dispatchEvent(new CustomEvent('catalyst-push', { detail: payload }));
+  // Poll notifications from cache (fallback for missed real-time push)
+  const pollNotifications = useCallback(async (email) => {
+    if (!email) return;
+    try {
+      const res = await fetch(`${API_BASE}/notifications/check?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if (data.success && data.notifications?.length > 0) {
+        data.notifications.forEach(notif => {
+          window.dispatchEvent(new CustomEvent('catalyst-push', { detail: notif }));
+        });
+        playNotificationSound();
       }
-    };
-    navigator.serviceWorker.addEventListener('message', handler);
-    return () => navigator.serviceWorker.removeEventListener('message', handler);
+    } catch (e) { console.error('Notification poll error:', e); }
   }, []);
 
   // Check auth on mount
   useEffect(() => {
     let cancelled = false;
-    // Restore from localStorage immediately (fast paint)
     try {
       const saved = localStorage.getItem('ec_user');
       if (saved && !cancelled) {
         const parsed = JSON.parse(saved);
         setUser(parsed);
-        // Subscribe to push for this user
-        if (parsed?.Email) subscribeToPush(parsed.Email);
+        // Restore Catalyst push session from saved JWT
+        const savedJwt = localStorage.getItem('ec_jwt');
+        if (parsed?.Email) {
+          const jwt = savedJwt ? JSON.parse(savedJwt) : null;
+          setupCatalystPush(jwt);
+          pollNotifications(parsed.Email);
+        }
       }
     } catch { localStorage.removeItem('ec_user'); }
     if (!cancelled) setAuthLoading(false);
 
     return () => { cancelled = true; };
-  }, [subscribeToPush]);
+  }, [setupCatalystPush, pollNotifications]);
+
+  // Poll for cached notifications when tab becomes visible (catches missed real-time push)
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible') {
+        const saved = localStorage.getItem('ec_user');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (parsed?.Email) pollNotifications(parsed.Email);
+          } catch {}
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [pollNotifications]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('ec_user', JSON.stringify(userData));
   }, []);
 
-  // After login/signup, subscribe to push notifications
+  // After login/signup, establish Catalyst session for push notifications
   const establishCatalystSession = useCallback(async (tokenData, email) => {
-    // Store JWT for any future use
     if (tokenData) {
       localStorage.setItem('ec_jwt', JSON.stringify(tokenData));
     }
-    // Subscribe to Web Push
-    if (email) {
-      pushInitRef.current = false; // Allow fresh subscription
-      await subscribeToPush(email);
-    }
-  }, [subscribeToPush]);
+    // Setup Catalyst Push with JWT token
+    pushInitRef.current = false;
+    await setupCatalystPush(tokenData);
+    // Poll for any queued notifications
+    if (email) await pollNotifications(email);
+  }, [setupCatalystPush, pollNotifications]);
 
   const logoutUser = useCallback(() => {
     setUser(null);
@@ -146,12 +192,6 @@ function AppProvider({ children }) {
     localStorage.removeItem('cartItems');
     setCartItems([]);
     pushInitRef.current = false;
-    // Unregister service worker push subscription
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription())
-        .then(sub => { if (sub) sub.unsubscribe(); })
-        .catch(() => {});
-    }
     window.location.href = '/';
   }, []);
 

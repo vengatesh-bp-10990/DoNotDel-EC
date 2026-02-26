@@ -2,45 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 const LS_NOTIFS_KEY = 'admin_notifications';
 
-// ─── Sound (Web Audio API — no external files) ───
-function playNotificationSound() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const playTone = (freq, startTime, duration) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, startTime);
-      gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
-      gain.gain.linearRampToValueAtTime(0, startTime + duration);
-      osc.start(startTime);
-      osc.stop(startTime + duration);
-    };
-    const now = ctx.currentTime;
-    playTone(880, now, 0.15);
-    playTone(1320, now + 0.18, 0.25);
-    setTimeout(() => ctx.close(), 1000);
-  } catch (e) { /* sound not supported */ }
-}
-
-// ─── Browser Notification ───
-function showBrowserNotification(title, body) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  try {
-    const n = new Notification(title, {
-      body,
-      icon: '🛒',
-      tag: 'new-order-' + Date.now(),
-      renotify: true,
-    });
-    n.onclick = () => { window.focus(); n.close(); };
-    setTimeout(() => n.close(), 8000);
-  } catch (e) { /* notification not supported */ }
-}
-
 // ─── localStorage helpers ───
 function getStoredNotifs() {
   try { return JSON.parse(localStorage.getItem(LS_NOTIFS_KEY) || '[]'); } catch { return []; }
@@ -114,13 +75,6 @@ export function useOrderNotifications(isAdmin) {
         // Toast
         setLatestOrder(notif);
         setTimeout(() => setLatestOrder(null), 6000);
-
-        // Sound + browser notification
-        playNotificationSound();
-        showBrowserNotification(
-          '🛒 New Order Received!',
-          `${notif.customerName} — ₹${notif.total.toFixed(0)}`
-        );
 
         // Notify subscribers (AdminOrders will refresh its order list)
         onNewOrderCallbacks.current.forEach(cb => cb([data]));

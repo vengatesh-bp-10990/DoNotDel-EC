@@ -3,7 +3,6 @@
 const express = require('express');
 const catalyst = require('zcatalyst-sdk-node');
 const bcrypt = require('bcryptjs');
-const webpush = require('web-push');
 
 const app = express();
 app.use(express.json());
@@ -11,13 +10,8 @@ app.use(express.json());
 const ADMIN_EMAIL = 'vengi9360@gmail.com';
 const CACHE_SEGMENT_ID = '21282000000050152';
 
-// ─── VAPID Keys for Web Push ───
-const VAPID_PUBLIC_KEY = 'BJyNqcoYniSvYg2w1NJx9hiHQRrdVY0dkA0-LAnEhDdOIgdePw8My9AvRpGLfVmMLmaqHVLg13xLdhWTwBcwaFM';
-const VAPID_PRIVATE_KEY = 'etTcCAMtvXAyQIyR1mu-Z5l832kgbZm-TnHv4Q8sudM';
-webpush.setVapidDetails('mailto:' + ADMIN_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-
 const PRODUCTS_CACHE_KEY = 'all_products';
-const PUSH_SUB_PREFIX = 'push_sub_'; // Cache key prefix for push subscriptions
+const NOTIF_PREFIX = 'notif_'; // Cache key prefix for notification queues
 const CACHE_EXPIRY_HOURS = 1;
 const SENDER_EMAIL = 'vengatesh.bp@zohocorp.com';
 const STORE_NAME = 'Homemade Products';
@@ -187,13 +181,15 @@ app.post('/google-auth', async (req, res) => {
       const u = existing[0].Users;
       const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
       if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
-      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
+      const tokenData = await generateCatalystToken(catalystApp, email, u.Name);
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role }, tokenData });
     }
     const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : 'Customer';
     const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: name || email.split('@')[0], Email: email, Phone: '', Password_Hash: 'GOOGLE_AUTH', Role: role });
     const displayName = name || email.split('@')[0];
     await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(displayName));
-    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: displayName, Email: email, Phone: '', Role: role } });
+    const tokenData = await generateCatalystToken(catalystApp, email, displayName);
+    res.status(201).json({ success: true, user: { ROWID: newUser.ROWID, Name: displayName, Email: email, Phone: '', Role: role }, tokenData });
   } catch (error) { console.error('Google auth error:', error); res.status(500).json({ success: false, message: 'Google auth failed' }); }
 });
 
@@ -216,8 +212,8 @@ app.post('/signup', async (req, res) => {
 
     // Send welcome email
     await sendEmail(catalystApp, email, `Welcome to ${STORE_NAME}! 🎉`, welcomeEmail(name));
-
-    res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role } });
+    const tokenData = await generateCatalystToken(catalystApp, email, name);
+    res.status(201).json({ success: true, message: 'Account created!', user: { ROWID: newUser.ROWID, Name: name, Email: email, Phone: phone || '', Role: role }, tokenData });
   } catch (error) { console.error('Signup error:', error); res.status(500).json({ success: false, message: 'Signup failed' }); }
 });
 
@@ -233,7 +229,8 @@ app.post('/login', async (req, res) => {
       if (email.toLowerCase() === ADMIN_EMAIL) {
         const hash = await bcrypt.hash(password, 10);
         const newUser = await catalystApp.datastore().table('Users').insertRow({ Name: 'Admin', Email: email, Phone: '', Password_Hash: hash, Role: 'Admin' });
-        return res.json({ success: true, user: { ROWID: newUser.ROWID, Name: 'Admin', Email: email, Phone: '', Role: 'Admin' } });
+        const tokenData = await generateCatalystToken(catalystApp, email, 'Admin');
+        return res.json({ success: true, user: { ROWID: newUser.ROWID, Name: 'Admin', Email: email, Phone: '', Role: 'Admin' }, tokenData });
       }
       return res.status(401).json({ success: false, message: 'No account found. Please sign up first.' });
     }
@@ -243,7 +240,8 @@ app.post('/login', async (req, res) => {
       const hash = await bcrypt.hash(password, 10);
       const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
       await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Password_Hash: hash, Role: role });
-      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
+      const tokenData = await generateCatalystToken(catalystApp, u.Email, u.Name);
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role }, tokenData });
     }
     if (u.Password_Hash === 'CATALYST_AUTH') {
       // Legacy account without password — set it now
@@ -254,7 +252,8 @@ app.post('/login', async (req, res) => {
     }
     const role = (email.toLowerCase() === ADMIN_EMAIL) ? 'Admin' : (u.Role || 'Customer');
     if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
-    res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
+    const tokenData = await generateCatalystToken(catalystApp, u.Email, u.Name);
+    res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role }, tokenData });
   } catch (error) { console.error('Login error:', error); res.status(500).json({ success: false, message: 'Login failed' }); }
 });
 
@@ -270,7 +269,8 @@ app.post('/auth/sync', async (req, res) => {
       const u = existing[0].Users;
       const role = email.toLowerCase() === ADMIN_EMAIL ? 'Admin' : (u.Role || 'Customer');
       if (role !== u.Role) await catalystApp.datastore().table('Users').updateRow({ ROWID: u.ROWID, Role: role });
-      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role } });
+      const tokenData = await generateCatalystToken(catalystApp, email, u.Name);
+      return res.json({ success: true, user: { ROWID: u.ROWID, Name: u.Name, Email: u.Email, Phone: u.Phone || '', Role: role }, tokenData });
     }
     // Create new user in Datastore
     const displayName = name || email.split('@')[0];
@@ -284,100 +284,115 @@ app.post('/auth/sync', async (req, res) => {
   } catch (error) { console.error('Auth sync error:', error); res.status(500).json({ success: false, message: 'Auth sync failed' }); }
 });
 
-// ─── Push Subscription Cache Helpers ───
-async function savePushSubscription(catalystApp, email, subscription) {
+// ─── Notification Queue Cache Helpers ───
+// Stores pending notifications per user in a JSON array in Cache
+const NOTIF_EXPIRY_HOURS = 24; // Notifications expire after 24 hours
+
+function notifCacheKey(email) {
+  return NOTIF_PREFIX + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+async function addNotification(catalystApp, email, notification) {
   try {
     const segment = catalystApp.cache().segment(CACHE_SEGMENT_ID);
-    const key = PUSH_SUB_PREFIX + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    // Try to delete existing key first (Cache doesn't upsert)
+    const key = notifCacheKey(email);
+    // Read existing queue
+    let queue = [];
+    try {
+      const raw = await segment.getValue(key);
+      if (raw) {
+        const str = (typeof raw === 'string') ? raw : (raw.cache_value || raw.value || JSON.stringify(raw));
+        queue = JSON.parse(str);
+        if (!Array.isArray(queue)) queue = [];
+      }
+    } catch (e) { queue = []; }
+    // Append new notification
+    const notif = { ...notification, id: Date.now() + '_' + Math.random().toString(36).slice(2, 6), time: new Date().toISOString() };
+    queue.push(notif);
+    // Keep max 50 notifications
+    if (queue.length > 50) queue = queue.slice(-50);
+    // Write back (delete first since Cache doesn't upsert)
     try { await segment.delete(key); } catch (e) { /* may not exist */ }
-    await segment.put(key, JSON.stringify(subscription), 720); // 720 hours = 30 days
-    console.log(`Push: saved subscription to cache for ${email} (key: ${key})`);
+    await segment.put(key, JSON.stringify(queue), NOTIF_EXPIRY_HOURS);
+    console.log(`Notif: added for ${email}, queue size: ${queue.length}, type: ${notification.type}`);
   } catch (e) {
-    console.error('Push: cache save error:', e.message);
+    console.error('Notif: add error:', e.message);
   }
 }
 
-async function getPushSubscription(catalystApp, email) {
+async function getAndClearNotifications(catalystApp, email) {
   try {
     const segment = catalystApp.cache().segment(CACHE_SEGMENT_ID);
-    const key = PUSH_SUB_PREFIX + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const result = await segment.getValue(key);
-    if (result) return JSON.parse(result);
-  } catch (e) { /* cache miss */ }
-  return null;
+    const key = notifCacheKey(email);
+    const raw = await segment.getValue(key);
+    if (!raw) return [];
+    const str = (typeof raw === 'string') ? raw : (raw.cache_value || raw.value || JSON.stringify(raw));
+    const queue = JSON.parse(str);
+    if (!Array.isArray(queue) || queue.length === 0) return [];
+    // Clear the queue
+    try { await segment.delete(key); } catch (e) { /* ignore */ }
+    console.log(`Notif: returned ${queue.length} notifications for ${email}`);
+    return queue;
+  } catch (e) {
+    console.error('Notif: get error:', e.message);
+    return [];
+  }
 }
 
-async function deletePushSubscription(catalystApp, email) {
+async function deleteNotifications(catalystApp, email) {
   try {
     const segment = catalystApp.cache().segment(CACHE_SEGMENT_ID);
-    const key = PUSH_SUB_PREFIX + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    await segment.delete(key);
+    await segment.delete(notifCacheKey(email));
   } catch (e) { /* may not exist */ }
 }
 
-// ─── Web Push Subscription Endpoint ───
-app.post('/push/subscribe', async (req, res) => {
+// ─── Notification Check Endpoint (lightweight polling) ───
+app.get('/notifications/check', async (req, res) => {
   try {
-    const { email, subscription } = req.body;
-    if (!email || !subscription) return res.status(400).json({ success: false, message: 'email and subscription required' });
+    const email = req.query.email;
+    if (!email) return res.status(400).json({ success: false, notifications: [] });
     const catalystApp = initCatalyst(req);
-    await savePushSubscription(catalystApp, email, subscription);
-    res.json({ success: true });
+    const notifications = await getAndClearNotifications(catalystApp, email);
+    res.json({ success: true, notifications });
   } catch (e) {
-    console.error('Push subscribe error:', e);
+    console.error('Notification check error:', e.message);
+    res.json({ success: true, notifications: [] });
+  }
+});
+
+// ─── Test Notification Endpoint ───
+app.post('/notifications/test', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'email required' });
+    const catalystApp = initCatalyst(req);
+    await notifyUsers(catalystApp, {
+      type: 'TEST',
+      title: '🔔 Test Notification',
+      body: `Notifications are working for ${email}!`,
+    }, [email]);
+    res.json({ success: true, message: 'Test notification sent! You should see it instantly.' });
+  } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
 });
 
-// ─── Web Push Notification Helper ───
-async function sendPushNotification(catalystApp, message, emails) {
+// ─── Helper: Send notification to users via Catalyst Push + Cache fallback ───
+async function notifyUsers(catalystApp, message, emails) {
+  if (!emails || emails.length === 0) return;
+  // Store in cache queue as fallback for offline users
+  for (const email of emails) {
+    await addNotification(catalystApp, email, message);
+  }
+  // Send real-time push via Catalyst Push Notifications
   try {
-    if (!emails || emails.length === 0) { console.log('Push: no emails provided'); return; }
-    const payload = typeof message === 'string' ? message : JSON.stringify(message);
-    console.log(`Push: sending to ${emails.join(', ')}, payload: ${payload.substring(0, 200)}`);
-
-    // Build a rich notification for the service worker
-    let notifPayload;
-    try {
-      const data = typeof message === 'object' ? message : JSON.parse(message);
-      if (data.type === 'NEW_ORDER') {
-        notifPayload = JSON.stringify({
-          ...data,
-          title: '🛒 New Order Received!',
-          body: `${data.customerName || 'Customer'} — ₹${data.total || 0}`,
-          tag: 'new-order-' + (data.orderId || Date.now()),
-        });
-      } else if (data.type === 'ORDER_STATUS') {
-        notifPayload = JSON.stringify({
-          ...data,
-          title: `Order #${data.orderId} ${data.status}`,
-          body: `Your order status has been updated to: ${data.status}`,
-          tag: 'order-status-' + (data.orderId || Date.now()),
-        });
-      } else {
-        notifPayload = payload;
-      }
-    } catch {
-      notifPayload = payload;
-    }
-
-    for (const email of emails) {
-      const sub = await getPushSubscription(catalystApp, email);
-      if (!sub) { console.log(`Push: no subscription for ${email}`); continue; }
-      try {
-        await webpush.sendNotification(sub, notifPayload);
-        console.log(`Push sent to ${email}`);
-      } catch (e) {
-        console.error(`Push to ${email} failed:`, e.statusCode || e.message);
-        if (e.statusCode === 410 || e.statusCode === 404) {
-          await deletePushSubscription(catalystApp, email);
-          console.log(`Push: removed stale subscription for ${email}`);
-        }
-      }
-    }
+    await catalystApp.pushNotification().web().sendNotification(
+      JSON.stringify(message),
+      emails
+    );
+    console.log('Push: sent to', emails.join(', '));
   } catch (e) {
-    console.error('Push notification error:', e.message);
+    console.error('Push send error (cache fallback available):', e.message);
   }
 }
 
@@ -539,8 +554,8 @@ app.delete('/account', async (req, res) => {
       console.log(`Deleted user ${userId} (${email}) from Datastore`);
     } catch (e) { console.error('User delete error:', e.message); }
 
-    // 3. Remove push subscription from cache
-    await deletePushSubscription(catalystApp, email);
+    // 3. Remove notifications from cache
+    await deleteNotifications(catalystApp, email);
 
     // 4. Try to delete from Catalyst Auth (best effort)
     try {
@@ -594,8 +609,8 @@ app.post('/orders', async (req, res) => {
         const items = Items || [];
         const html = orderPlacedEmail(user.Name, newOrder.ROWID, Total_Amount, items, Shipping_Address, Payment_Method || 'COD');
         await sendEmail(catalystApp, user.Email, `Order #${newOrder.ROWID} Placed - ${STORE_NAME}`, html);
-        // Push notification to admin about new order
-        await sendPushNotification(catalystApp, { type: 'NEW_ORDER', orderId: newOrder.ROWID, total: Total_Amount, customerName: user.Name }, [ADMIN_EMAIL]);
+        // Notify admin about new order
+        await notifyUsers(catalystApp, { type: 'NEW_ORDER', orderId: newOrder.ROWID, total: Total_Amount, customerName: user.Name, itemCount: (Items || []).length }, [ADMIN_EMAIL]);
       }
     } catch (emailErr) { console.error('Order email error:', emailErr.message); }
 
@@ -756,8 +771,8 @@ app.put('/admin/order-status', async (req, res) => {
           const user = userRes[0].Users || userRes[0];
           const html = statusUpdateEmail(user.Name, orderId, status, order.Total_Amount);
           await sendEmail(catalystApp, user.Email, `Order #${orderId} ${status} - ${STORE_NAME}`, html);
-          // Push notification to customer about status change
-          await sendPushNotification(catalystApp, { type: 'ORDER_STATUS', orderId, status }, [user.Email]);
+          // Notify customer about status change
+          await notifyUsers(catalystApp, { type: 'ORDER_STATUS', orderId, status }, [user.Email]);
         }
       }
     } catch (emailErr) { console.error('Status email error:', emailErr.message); }
@@ -814,8 +829,8 @@ app.post('/admin/auto-confirm', async (req, res) => {
         const user = userRes[0].Users || userRes[0];
         const html = statusUpdateEmail(user.Name, orderId, 'Confirmed', order.Total_Amount);
         await sendEmail(catalystApp, user.Email, `Order #${orderId} Auto-Confirmed - ${STORE_NAME}`, html);
-        // Push notification to customer about auto-confirm
-        await sendPushNotification(catalystApp, { type: 'ORDER_STATUS', orderId, status: 'Confirmed' }, [user.Email]);
+        // Notify customer about auto-confirm
+        await notifyUsers(catalystApp, { type: 'ORDER_STATUS', orderId, status: 'Confirmed' }, [user.Email]);
       }
     } catch (emailErr) { console.error('Auto-confirm email error:', emailErr.message); }
 

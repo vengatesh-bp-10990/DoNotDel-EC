@@ -40,8 +40,8 @@ function Signup() {
       // Store user in app context
       loginUser(data.user);
 
-      // Subscribe to Web Push notifications
-      await establishCatalystSession(null, data.user?.Email);
+      // Establish Catalyst session for push notifications
+      await establishCatalystSession(data.tokenData, data.user?.Email);
 
       // Redirect to home or admin
       navigate(data.user?.Role === 'Admin' ? '/admin' : '/', { replace: true });
