@@ -41,9 +41,7 @@ function Signup() {
       loginUser(data.user);
 
       // Subscribe to Web Push notifications
-      if (data.jwt_token) {
-        await establishCatalystSession(data.jwt_token, data.user?.Email);
-      }
+      await establishCatalystSession(null, data.user?.Email);
 
       // Redirect to home or admin
       navigate(data.user?.Role === 'Admin' ? '/admin' : '/', { replace: true });

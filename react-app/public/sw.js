@@ -19,7 +19,17 @@ self.addEventListener('push', (event) => {
     actions: data.actions || [],
   };
 
-  event.waitUntil(self.registration.showNotification(data.title || 'Homemade Products', options));
+  // Show OS notification AND forward to open tabs
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(data.title || 'Homemade Products', options),
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+        windowClients.forEach((client) => {
+          client.postMessage({ type: 'PUSH_RECEIVED', payload: data });
+        });
+      })
+    ])
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -46,22 +56,6 @@ self.addEventListener('notificationclick', (event) => {
       }
       // Open new tab
       return clients.openWindow(url);
-    })
-  );
-});
-
-// Also post message to open tabs so in-app notifications work
-self.addEventListener('push', (event) => {
-  let data = {};
-  try {
-    data = event.data ? event.data.json() : {};
-  } catch {}
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      windowClients.forEach((client) => {
-        client.postMessage({ type: 'PUSH_RECEIVED', payload: data });
-      });
     })
   );
 });
