@@ -16,10 +16,8 @@ const VAPID_PUBLIC_KEY = 'BJyNqcoYniSvYg2w1NJx9hiHQRrdVY0dkA0-LAnEhDdOIgdePw8My9
 const VAPID_PRIVATE_KEY = 'etTcCAMtvXAyQIyR1mu-Z5l832kgbZm-TnHv4Q8sudM';
 webpush.setVapidDetails('mailto:' + ADMIN_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-// In-memory push subscription store (keyed by email)
-// On cold start this resets, so frontend re-subscribes on each page load
-const pushSubscriptions = new Map();
 const PRODUCTS_CACHE_KEY = 'all_products';
+const PUSH_SUB_PREFIX = 'push_sub_'; // Cache key prefix for push subscriptions
 const CACHE_EXPIRY_HOURS = 1;
 const SENDER_EMAIL = 'vengatesh.bp@zohocorp.com';
 const STORE_NAME = 'Homemade Products';
@@ -286,14 +284,45 @@ app.post('/auth/sync', async (req, res) => {
   } catch (error) { console.error('Auth sync error:', error); res.status(500).json({ success: false, message: 'Auth sync failed' }); }
 });
 
+// ─── Push Subscription Cache Helpers ───
+async function savePushSubscription(catalystApp, email, subscription) {
+  try {
+    const segment = catalystApp.cache().segment(CACHE_SEGMENT_ID);
+    const key = PUSH_SUB_PREFIX + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    // Try to delete existing key first (Cache doesn't upsert)
+    try { await segment.delete(key); } catch (e) { /* may not exist */ }
+    await segment.put(key, JSON.stringify(subscription), 720); // 720 hours = 30 days
+    console.log(`Push: saved subscription to cache for ${email} (key: ${key})`);
+  } catch (e) {
+    console.error('Push: cache save error:', e.message);
+  }
+}
+
+async function getPushSubscription(catalystApp, email) {
+  try {
+    const segment = catalystApp.cache().segment(CACHE_SEGMENT_ID);
+    const key = PUSH_SUB_PREFIX + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const result = await segment.getValue(key);
+    if (result) return JSON.parse(result);
+  } catch (e) { /* cache miss */ }
+  return null;
+}
+
+async function deletePushSubscription(catalystApp, email) {
+  try {
+    const segment = catalystApp.cache().segment(CACHE_SEGMENT_ID);
+    const key = PUSH_SUB_PREFIX + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    await segment.delete(key);
+  } catch (e) { /* may not exist */ }
+}
+
 // ─── Web Push Subscription Endpoint ───
-app.post('/push/subscribe', (req, res) => {
+app.post('/push/subscribe', async (req, res) => {
   try {
     const { email, subscription } = req.body;
     if (!email || !subscription) return res.status(400).json({ success: false, message: 'email and subscription required' });
-    // Store subscription (one per email; latest wins)
-    pushSubscriptions.set(email.toLowerCase(), subscription);
-    console.log(`Push: saved subscription for ${email}, total: ${pushSubscriptions.size}`);
+    const catalystApp = initCatalyst(req);
+    await savePushSubscription(catalystApp, email, subscription);
     res.json({ success: true });
   } catch (e) {
     console.error('Push subscribe error:', e);
@@ -334,7 +363,7 @@ async function sendPushNotification(catalystApp, message, emails) {
     }
 
     for (const email of emails) {
-      const sub = pushSubscriptions.get(email.toLowerCase());
+      const sub = await getPushSubscription(catalystApp, email);
       if (!sub) { console.log(`Push: no subscription for ${email}`); continue; }
       try {
         await webpush.sendNotification(sub, notifPayload);
@@ -342,8 +371,7 @@ async function sendPushNotification(catalystApp, message, emails) {
       } catch (e) {
         console.error(`Push to ${email} failed:`, e.statusCode || e.message);
         if (e.statusCode === 410 || e.statusCode === 404) {
-          // Subscription expired/invalid — remove it
-          pushSubscriptions.delete(email.toLowerCase());
+          await deletePushSubscription(catalystApp, email);
           console.log(`Push: removed stale subscription for ${email}`);
         }
       }
@@ -511,8 +539,8 @@ app.delete('/account', async (req, res) => {
       console.log(`Deleted user ${userId} (${email}) from Datastore`);
     } catch (e) { console.error('User delete error:', e.message); }
 
-    // 3. Remove push subscription
-    pushSubscriptions.delete(email.toLowerCase());
+    // 3. Remove push subscription from cache
+    await deletePushSubscription(catalystApp, email);
 
     // 4. Try to delete from Catalyst Auth (best effort)
     try {
