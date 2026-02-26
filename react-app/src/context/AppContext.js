@@ -3,7 +3,27 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 const AppContext = createContext();
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
-// ─── Notification sound (Web Audio API — no external files) ───
+// ─── Show browser notification helper ───
+function showBrowserNotification(data) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    let title = 'Homemade Products';
+    let body = 'You have a new notification';
+    if (data.type === 'NEW_ORDER') {
+      title = '\ud83d\uded2 New Order Received!';
+      body = `${data.customerName || 'Customer'} \u2014 \u20b9${parseFloat(data.total || 0).toFixed(0)}`;
+    } else if (data.type === 'ORDER_STATUS') {
+      title = '\ud83d\udce6 Order Update';
+      body = `Order #${data.orderId} \u2014 ${data.status}`;
+    } else if (data.type === 'TEST') {
+      title = data.title || '\ud83d\udd14 Test Notification';
+      body = data.body || 'Notifications are working!';
+    }
+    const n = new Notification(title, { body, icon: '/logo192.png', tag: 'notif-' + Date.now(), renotify: true });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 8000);
+  } catch (e) { console.error('Browser notification error:', e); }
+}
 function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -52,56 +72,46 @@ function AppProvider({ children }) {
       // Establish Catalyst session with JWT
       if (jwtToken && window.catalyst?.auth?.signinWithJwt) {
         try {
-          const jwt = typeof jwtToken === 'object' ? (jwtToken.jwt_token || jwtToken.token) : jwtToken;
+          let jwt;
+          if (typeof jwtToken === 'object') {
+            jwt = jwtToken.jwt_token || jwtToken.token;
+            console.log('Catalyst: JWT token object keys:', Object.keys(jwtToken));
+          } else {
+            jwt = jwtToken;
+          }
           if (jwt) {
-            await window.catalyst.auth.signinWithJwt(jwt);
-            console.log('Catalyst: session established via JWT');
+            console.log('Catalyst: calling signinWithJwt, token length:', jwt.length);
+            const signInResult = await window.catalyst.auth.signinWithJwt(jwt);
+            console.log('Catalyst: signinWithJwt result:', signInResult);
+          } else {
+            console.warn('Catalyst: No JWT string found in tokenData');
           }
         } catch (e) {
-          console.warn('Catalyst: signinWithJwt error:', e.message || e);
+          console.error('Catalyst: signinWithJwt error:', e.message || e, e);
         }
+      } else {
+        console.warn('Catalyst: No JWT token or signinWithJwt not available. jwtToken:', !!jwtToken, 'signinWithJwt:', !!window.catalyst?.auth?.signinWithJwt);
       }
 
       // Enable Catalyst Push Notifications (WebSocket-based real-time)
       if (window.catalyst?.notification?.enableNotification) {
         try {
-          await window.catalyst.notification.enableNotification();
-          console.log('Catalyst: Push notifications enabled');
+          console.log('Catalyst: calling enableNotification...');
+          const enableResult = await window.catalyst.notification.enableNotification();
+          console.log('Catalyst: enableNotification result:', enableResult);
 
           // Handle incoming push messages — plays sound + shows browser notification
           window.catalyst.notification.messageHandler = (msg) => {
             console.log('Catalyst push received:', msg);
             try {
               const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
-
-              // Dispatch event for components (Orders, OrderTracking, AdminLayout)
               window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
-
-              // Play notification sound
               playNotificationSound();
-
-              // Show browser notification (visible even from a background tab)
-              if ('Notification' in window && Notification.permission === 'granted') {
-                let title = 'Homemade Products';
-                let body = 'You have a new notification';
-                if (data.type === 'NEW_ORDER') {
-                  title = '🛒 New Order Received!';
-                  body = `${data.customerName || 'Customer'} — ₹${parseFloat(data.total || 0).toFixed(0)}`;
-                } else if (data.type === 'ORDER_STATUS') {
-                  title = '📦 Order Update';
-                  body = `Order #${data.orderId} — ${data.status}`;
-                } else if (data.type === 'TEST') {
-                  title = data.title || '🔔 Test Notification';
-                  body = data.body || 'Notifications are working!';
-                }
-                const n = new Notification(title, { body, icon: '/logo192.png', tag: 'notif-' + Date.now(), renotify: true });
-                n.onclick = () => { window.focus(); n.close(); };
-                setTimeout(() => n.close(), 8000);
-              }
+              showBrowserNotification(data);
             } catch (e) { console.error('Push message parse error:', e); }
           };
         } catch (e) {
-          console.error('Catalyst: enableNotification failed:', e.message || e);
+          console.error('Catalyst: enableNotification failed:', e.message || e, e);
           pushInitRef.current = false;
         }
       } else {
@@ -121,8 +131,10 @@ function AppProvider({ children }) {
       const res = await fetch(`${API_BASE}/notifications/check?email=${encodeURIComponent(email)}`);
       const data = await res.json();
       if (data.success && data.notifications?.length > 0) {
+        console.log('Poll: got', data.notifications.length, 'cached notifications');
         data.notifications.forEach(notif => {
           window.dispatchEvent(new CustomEvent('catalyst-push', { detail: notif }));
+          showBrowserNotification(notif);
         });
         playNotificationSound();
       }
