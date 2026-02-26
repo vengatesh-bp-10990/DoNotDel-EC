@@ -163,21 +163,49 @@ function AppProvider({ children }) {
     return () => { cancelled = true; };
   }, [setupCatalystPush, pollNotifications]);
 
-  // Poll for cached notifications when tab becomes visible (catches missed real-time push)
+  // Poll for cached notifications when tab becomes visible + every 10s while visible
   useEffect(() => {
-    const handler = () => {
-      if (document.visibilityState === 'visible') {
+    let intervalId = null;
+
+    const getUserEmail = () => {
+      try {
         const saved = localStorage.getItem('ec_user');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (parsed?.Email) pollNotifications(parsed.Email);
-          } catch {}
+        if (saved) return JSON.parse(saved)?.Email;
+      } catch {}
+      return null;
+    };
+
+    const checkNow = () => {
+      const email = getUserEmail();
+      if (email) pollNotifications(email);
+    };
+
+    // Start/stop polling based on tab visibility
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkNow(); // Immediate check on tab focus
+        if (!intervalId) {
+          intervalId = setInterval(checkNow, 10000); // Every 10 seconds
+        }
+      } else {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
         }
       }
     };
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Start polling immediately if tab is visible
+    if (document.visibilityState === 'visible') {
+      intervalId = setInterval(checkNow, 10000);
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [pollNotifications]);
 
   const loginUser = useCallback((userData) => {
