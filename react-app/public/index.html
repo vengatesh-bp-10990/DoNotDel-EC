@@ -31,17 +31,7 @@
     <!-- Catalyst Web SDK -->
     <script src="https://static.zohocdn.com/catalyst/sdk/js/4.5.0/catalystWebSDK.js"></script>
     <script src="/__catalyst/sdk/init.js"></script>
-    <script>
-      // Prevent Catalyst SDK from auto-rendering its login form.
-      // We use our own custom login/signup forms.
-      (function() {
-        var origSignIn = window.catalyst && window.catalyst.auth && window.catalyst.auth.signIn;
-        if (window.catalyst && window.catalyst.auth) {
-          window.catalyst.auth._origSignIn = origSignIn;
-          window.catalyst.auth.signIn = function() { /* no-op: we use custom forms */ };
-        }
-      })();
-    </script>
+    <!-- Catalyst Auth is handled via SDK's default login/signup form -->
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

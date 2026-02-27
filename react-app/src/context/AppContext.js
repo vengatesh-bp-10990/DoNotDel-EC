@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 const AppContext = createContext();
+const API_BASE = '/server/do_not_del_ec_function';
 
 // ─── Show browser notification helper ───
 function showBrowserNotification(data) {
@@ -50,114 +51,152 @@ function AppProvider({ children }) {
   /* ─── User State ─── */
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const sseRef = useRef(null);
+  const pushInitRef = useRef(false);
 
   /* ─── Auth Modal State ─── */
   const [showAuthModal, setShowAuthModal] = useState(false);
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
-  // ─── SSE (Server-Sent Events) Notifications ───
-  const setupNotifications = useCallback((email) => {
-    if (!email) return;
-    // Close existing connection
-    if (sseRef.current) {
-      sseRef.current.close();
-      sseRef.current = null;
-    }
-
-    // Request browser notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-
-    // Connect to SSE stream
-    const url = `/server/do_not_del_ec_function/notifications/stream?email=${encodeURIComponent(email)}`;
-    console.log('SSE: connecting to', url);
-    const es = new EventSource(url);
-
-    es.onopen = () => {
-      console.log('SSE: connection opened');
-    };
-
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'CONNECTED') {
-          console.log('SSE: server confirmed connection');
-          return;
-        }
-        console.log('SSE: notification received:', data);
-        // Dispatch event for UI components (admin panel, order tracking, etc.)
-        window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
-        playNotificationSound();
-        showBrowserNotification(data);
-      } catch (e) {
-        console.error('SSE parse error:', e);
-      }
-    };
-
-    es.onerror = (e) => {
-      console.log('SSE: connection error, will auto-reconnect...', es.readyState);
-      // EventSource auto-reconnects with ~3 second delay
-    };
-
-    sseRef.current = es;
-  }, []);
-
-  // Close SSE on unmount
-  useEffect(() => {
-    return () => {
-      if (sseRef.current) {
-        sseRef.current.close();
-        sseRef.current = null;
-      }
-    };
-  }, []);
-
-  // Check auth on mount — restore session and start SSE
-  useEffect(() => {
-    let cancelled = false;
+  // ─── Enable Catalyst Push Notifications ───
+  const enablePushNotifications = useCallback(async () => {
+    if (pushInitRef.current) return;
     try {
-      const saved = localStorage.getItem('ec_user');
-      if (saved && !cancelled) {
-        const parsed = JSON.parse(saved);
-        setUser(parsed);
-        if (parsed?.Email) {
-          setupNotifications(parsed.Email);
-        }
-      }
-    } catch { localStorage.removeItem('ec_user'); }
-    if (!cancelled) setAuthLoading(false);
+      pushInitRef.current = true;
 
-    return () => { cancelled = true; };
-  }, [setupNotifications]);
+      // Request browser notification permission
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+
+      // Enable Catalyst Push Notifications (real-time via WebSocket)
+      if (window.catalyst?.notification?.enableNotification) {
+        console.log('Catalyst Push: enabling...');
+        const result = await window.catalyst.notification.enableNotification();
+        console.log('Catalyst Push: enabled', result);
+
+        // Handle incoming push messages
+        window.catalyst.notification.messageHandler = (msg) => {
+          console.log('Catalyst Push: received', msg);
+          try {
+            const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
+            window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
+            playNotificationSound();
+            showBrowserNotification(data);
+          } catch (e) { console.error('Push message parse error:', e); }
+        };
+      } else {
+        console.warn('Catalyst Push: notification API not available');
+        pushInitRef.current = false;
+      }
+    } catch (e) {
+      console.error('Catalyst Push: enable failed:', e.message || e);
+      pushInitRef.current = false;
+    }
+  }, []);
+
+  // ─── Catalyst Auth: afterSignIn handler ───
+  // Called by Catalyst SDK after user signs in via the default login form
+  const syncCatalystUser = useCallback(async (catalystUser) => {
+    try {
+      const email = catalystUser?.email_id || catalystUser?.email;
+      const name = [catalystUser?.first_name, catalystUser?.last_name].filter(Boolean).join(' ') || email?.split('@')[0];
+      if (!email) return;
+
+      console.log('Catalyst Auth: syncing user', email);
+      // Sync to our Datastore (creates user if new, returns role)
+      const res = await fetch(`${API_BASE}/auth/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name })
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        setUser(data.user);
+        localStorage.setItem('ec_user', JSON.stringify(data.user));
+        console.log('Catalyst Auth: user synced', data.user.Role);
+      }
+
+      // Enable push notifications now that user is authenticated via Catalyst
+      await enablePushNotifications();
+    } catch (e) {
+      console.error('Catalyst Auth sync error:', e);
+    }
+  }, [enablePushNotifications]);
+
+  // ─── Initialize Catalyst Auth ───
+  useEffect(() => {
+    const cat = window.catalyst;
+    if (!cat?.auth) {
+      setAuthLoading(false);
+      return;
+    }
+
+    // Check if user is already signed in (session cookie)
+    cat.auth.isUserAuthenticated()
+      .then(async (result) => {
+        console.log('Catalyst Auth: isUserAuthenticated result', result);
+        if (result?.content) {
+          // User is already authenticated — sync to our datastore
+          await syncCatalystUser(result.content);
+          await enablePushNotifications();
+        } else {
+          // Check localStorage fallback
+          const saved = localStorage.getItem('ec_user');
+          if (saved) {
+            try {
+              setUser(JSON.parse(saved));
+            } catch { localStorage.removeItem('ec_user'); }
+          }
+        }
+        setAuthLoading(false);
+      })
+      .catch((err) => {
+        console.log('Catalyst Auth: not authenticated', err?.message || err);
+        // Check localStorage fallback
+        const saved = localStorage.getItem('ec_user');
+        if (saved) {
+          try {
+            setUser(JSON.parse(saved));
+          } catch { localStorage.removeItem('ec_user'); }
+        }
+        setAuthLoading(false);
+      });
+  }, [syncCatalystUser, enablePushNotifications]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('ec_user', JSON.stringify(userData));
   }, []);
 
-  // After login/signup, start SSE notifications
-  const establishCatalystSession = useCallback(async (tokenData, email) => {
-    if (email) {
-      setupNotifications(email);
+  // Trigger Catalyst default login form
+  const triggerCatalystLogin = useCallback(() => {
+    if (window.catalyst?.auth?.signIn) {
+      window.catalyst.auth.signIn('login');
+    } else {
+      console.error('Catalyst auth.signIn not available');
     }
-  }, [setupNotifications]);
+  }, []);
+
+  // Legacy: kept for compatibility but now just enables push
+  const establishCatalystSession = useCallback(async (tokenData, email) => {
+    await enablePushNotifications();
+  }, [enablePushNotifications]);
 
   const logoutUser = useCallback(() => {
-    // Close SSE connection
-    if (sseRef.current) {
-      sseRef.current.close();
-      sseRef.current = null;
-    }
+    pushInitRef.current = false;
     setUser(null);
     localStorage.removeItem('ec_user');
     localStorage.removeItem('ec_jwt');
     localStorage.removeItem('ec_push_email');
     localStorage.removeItem('cartItems');
     setCartItems([]);
-    window.location.href = '/';
+    // Sign out of Catalyst Auth
+    if (window.catalyst?.auth?.signOut) {
+      window.catalyst.auth.signOut('/').catch(() => {});
+    } else {
+      window.location.href = '/';
+    }
   }, []);
 
   /* ─── Cart State ─── */
@@ -289,6 +328,7 @@ function AppProvider({ children }) {
         loginUser,
         logoutUser,
         establishCatalystSession,
+        triggerCatalystLogin,
         // Auth Modal
         showAuthModal,
         openAuthModal,

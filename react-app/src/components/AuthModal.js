@@ -1,10 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 function AuthModal() {
-  const { showAuthModal, closeAuthModal } = useApp();
-  const navigate = useNavigate();
+  const { showAuthModal, closeAuthModal, triggerCatalystLogin } = useApp();
   const backdropRef = useRef(null);
 
   // Lock body scroll when modal is open
@@ -56,11 +54,11 @@ function AuthModal() {
           <p className="text-white/80 text-sm mt-1">Sign in to continue shopping</p>
         </div>
 
-        {/* Redirect to Login */}
+        {/* Trigger Catalyst Login */}
         <div className="px-5 sm:px-7 py-8 text-center">
           <p className="text-gray-600 text-sm mb-5">Please sign in or create an account to continue.</p>
           <button
-            onClick={() => { closeAuthModal(); navigate('/login'); }}
+            onClick={() => { closeAuthModal(); triggerCatalystLogin(); }}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-lg shadow-amber-200 transition-all duration-300 flex items-center justify-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>

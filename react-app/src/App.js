@@ -3,8 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react
 import { AppProvider, useApp } from './context/AppContext';
 import Home from './pages/Home';
 import Cart from './pages/Cart';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
+// Custom Login/Signup — commented out, using Catalyst default auth instead
+// import Login from './pages/Login';
+// import Signup from './pages/Signup';
 import Checkout from './pages/Checkout';
 import Profile from './pages/Profile';
 import Orders from './pages/Orders';
@@ -144,7 +145,7 @@ function LocationPicker() {
 }
 
 function Navbar() {
-  const { cartCount, isAuthenticated, user, logoutUser, openAuthModal } = useApp();
+  const { cartCount, isAuthenticated, user, logoutUser, openAuthModal, triggerCatalystLogin } = useApp();
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -237,8 +238,8 @@ function Navbar() {
             ) : (
               <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
                 <button onClick={() => { openAuthModal(); }} className="sm:hidden px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 shadow-sm">Sign In</button>
-                <Link to="/login" className="hidden sm:inline-flex px-4 py-2 rounded-xl text-sm font-medium text-amber-600 hover:bg-amber-50 transition-all">Sign In</Link>
-                <Link to="/signup" className="hidden sm:inline-flex px-5 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-sm hover:shadow-md transition-all">Sign Up</Link>
+                <button onClick={() => { triggerCatalystLogin(); }} className="hidden sm:inline-flex px-4 py-2 rounded-xl text-sm font-medium text-amber-600 hover:bg-amber-50 transition-all">Sign In</button>
+                <button onClick={() => { triggerCatalystLogin(); }} className="hidden sm:inline-flex px-5 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-sm hover:shadow-md transition-all">Sign Up</button>
               </div>
             )}
           </div>
@@ -312,8 +313,9 @@ function App() {
                   <Route path="/" element={<Home />} />
                   <Route path="/cart" element={<Cart />} />
                   <Route path="/checkout" element={<Checkout />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/signup" element={<Signup />} />
+                  {/* Custom Login/Signup routes — commented out, using Catalyst default auth */}
+                  {/* <Route path="/login" element={<Login />} /> */}
+                  {/* <Route path="/signup" element={<Signup />} /> */}
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/order/:id" element={<OrderTracking />} />
