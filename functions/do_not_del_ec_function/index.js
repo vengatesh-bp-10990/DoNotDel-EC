@@ -3,13 +3,26 @@
 const express = require('express');
 const catalyst = require('zcatalyst-sdk-node');
 const bcrypt = require('bcryptjs');
-const cors = require('cors');
 
 const app = express();
 app.use(express.json());
 
-// Allow all origins (Slate hosting uses different subdomains)
-app.use(cors({ origin: true, credentials: true }));
+// Handle CORS preflight — Catalyst gateway adds ACAO headers on actual responses,
+// so we only need to handle OPTIONS (preflight) ourselves to avoid duplicate headers.
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin || '*';
+    res.set({
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Max-Age': '86400'
+    });
+    return res.status(204).end();
+  }
+  next();
+});
 
 const ADMIN_EMAIL = 'vengi9360@gmail.com';
 const CACHE_SEGMENT_ID = '21282000000050152';
