@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
 function Profile() {
-  const { user, isAuthenticated, loginUser, logoutUser, openAuthModal } = useApp();
+  const { user, isAuthenticated, loginUser, logoutUser, openAuthModal, notificationsEnabled, setNotificationsEnabled } = useApp();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: user?.Name || '', phone: user?.Phone || '' });
@@ -142,49 +142,58 @@ function Profile() {
         </Link>
       </div>
 
-      {/* ─── Test Push Notification ─── */}
+      {/* ─── Notifications Toggle ─── */}
       <div className="mt-6 bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
         <div className="p-6">
-          <h3 className="text-lg font-bold text-blue-600 mb-2 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-            Push Notifications
-          </h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Test if real-time notifications are working for your account.
-          </p>
-          {pushStatus && (
-            <div className={`mb-4 p-3 rounded-xl text-sm ${pushStatus.includes('✅') ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : pushStatus.includes('❌') ? 'bg-red-50 border border-red-200 text-red-600' : 'bg-blue-50 border border-blue-200 text-blue-700'}`}>
-              {pushStatus}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${notificationsEnabled ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                <svg className={`w-5 h-5 ${notificationsEnabled ? 'text-blue-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Notifications</h3>
+                <p className="text-xs text-gray-400">{notificationsEnabled ? 'You will receive order updates' : 'Enable to get order updates'}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+              className={`relative w-12 h-7 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-300 ${
+                notificationsEnabled ? 'bg-blue-600' : 'bg-gray-300'
+              }`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-sm transition-transform duration-300 ${
+                notificationsEnabled ? 'translate-x-5' : 'translate-x-0'
+              }`} />
+            </button>
+          </div>
+          {notificationsEnabled && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">Test if notifications are working</p>
+                <button
+                  onClick={async () => {
+                    setPushStatus('🔍 Sending...');
+                    try {
+                      const res = await fetch(`${API_BASE}/notifications/test`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: user.Email }),
+                      });
+                      const data = await res.json();
+                      setPushStatus(data.success ? '✅ Sent! Check for notification.' : `❌ ${data.message}`);
+                    } catch (e) { setPushStatus(`❌ ${e.message}`); }
+                    setTimeout(() => setPushStatus(''), 5000);
+                  }}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-all"
+                >
+                  Send Test
+                </button>
+              </div>
+              {pushStatus && (
+                <p className={`mt-2 text-xs ${pushStatus.includes('✅') ? 'text-emerald-600' : pushStatus.includes('❌') ? 'text-red-500' : 'text-blue-500'}`}>{pushStatus}</p>
+              )}
             </div>
           )}
-          <button
-            onClick={async () => {
-              setPushStatus('🔍 Sending test notification...');
-              try {
-                const res = await fetch(`${API_BASE}/notifications/test`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email: user.Email }),
-                });
-                const data = await res.json();
-                if (data.success) {
-                  const debug = data.debug || {};
-                  if (debug.pushSuccess) {
-                    setPushStatus(`✅ Push sent successfully! You should hear a sound and see a notification.`);
-                  } else {
-                    setPushStatus(`⚠️ Saved to queue but push failed: ${debug.pushError || 'unknown'}. Check console for details.`);
-                  }
-                } else {
-                  setPushStatus(`❌ ${data.message}`);
-                }
-              } catch (e) {
-                setPushStatus(`❌ Network error: ${e.message}`);
-              }
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-xl transition-all text-sm"
-          >
-            Send Test Notification
-          </button>
         </div>
       </div>
 

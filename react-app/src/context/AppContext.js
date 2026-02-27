@@ -62,8 +62,11 @@ function AppProvider({ children }) {
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
-  // ─── Notification Polling (Cache-based) ───
+  // ─── Notification Polling (Cache-based, toggle-controlled) ───
   const pollingRef = useRef(null);
+  const [notificationsEnabled, setNotificationsEnabledState] = useState(() => {
+    try { return localStorage.getItem('ec_notif_enabled') === 'true'; } catch { return false; }
+  });
 
   const startNotificationPolling = useCallback((email) => {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
@@ -98,13 +101,21 @@ function AppProvider({ children }) {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
   }, []);
 
-  // Auto-start polling when user is logged in
+  // Toggle notifications on/off
+  const setNotificationsEnabled = useCallback((enabled) => {
+    setNotificationsEnabledState(enabled);
+    localStorage.setItem('ec_notif_enabled', enabled ? 'true' : 'false');
+  }, []);
+
+  // Start/stop polling based on toggle + user login
   useEffect(() => {
-    if (user?.Email) {
+    if (notificationsEnabled && user?.Email) {
       startNotificationPolling(user.Email);
+    } else {
+      stopNotificationPolling();
     }
     return () => stopNotificationPolling();
-  }, [user?.Email, startNotificationPolling, stopNotificationPolling]);
+  }, [notificationsEnabled, user?.Email, startNotificationPolling, stopNotificationPolling]);
 
   // ─── Auth Functions ───
   const loginUser = useCallback((userData) => {
@@ -119,10 +130,12 @@ function AppProvider({ children }) {
 
   const logoutUser = useCallback(() => {
     stopNotificationPolling();
+    setNotificationsEnabledState(false);
     setUser(null);
     localStorage.removeItem('ec_user');
     localStorage.removeItem('ec_jwt');
     localStorage.removeItem('ec_push_email');
+    localStorage.removeItem('ec_notif_enabled');
     localStorage.removeItem('cartItems');
     setCartItems([]);
     window.location.href = '/';
@@ -269,6 +282,9 @@ function AppProvider({ children }) {
         removeFromCart,
         updateQuantity,
         clearCart,
+        // Notifications
+        notificationsEnabled,
+        setNotificationsEnabled,
         // Location
         location,
         setLocation,
