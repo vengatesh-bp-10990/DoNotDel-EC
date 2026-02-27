@@ -165,7 +165,9 @@ function AppProvider({ children }) {
   // Trigger Catalyst default login form
   const triggerCatalystLogin = useCallback(() => {
     // Redirect to Catalyst's built-in login page
-    window.location.href = '/__catalyst/auth/login';
+    // Pass service_url so after login it redirects to our app root (not /app/index.html which 404s on Slate)
+    const redirectUrl = encodeURIComponent(window.location.origin + '/');
+    window.location.href = `/__catalyst/auth/login?service_url=${redirectUrl}`;
   }, []);
 
   // Legacy: kept for compatibility but now just enables push
