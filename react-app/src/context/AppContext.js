@@ -128,6 +128,9 @@ function AppProvider({ children }) {
   useEffect(() => {
     const cat = window.catalyst;
     if (!cat?.auth) {
+      // No Catalyst SDK — fall back to localStorage
+      const saved = localStorage.getItem('ec_user');
+      if (saved) { try { setUser(JSON.parse(saved)); } catch { localStorage.removeItem('ec_user'); } }
       setAuthLoading(false);
       return;
     }
@@ -135,34 +138,24 @@ function AppProvider({ children }) {
     // Check if user is already signed in (session cookie)
     cat.auth.isUserAuthenticated()
       .then(async (result) => {
-        console.log('Catalyst Auth: isUserAuthenticated result', result);
-        if (result?.content) {
-          // User is already authenticated — sync to our datastore
-          await syncCatalystUser(result.content);
-          await enablePushNotifications();
+        console.log('Catalyst Auth: authenticated', result);
+        const userData = result?.content || result;
+        if (userData?.email_id || userData?.email) {
+          await syncCatalystUser(userData);
         } else {
-          // Check localStorage fallback
+          // Might have localStorage from previous session
           const saved = localStorage.getItem('ec_user');
-          if (saved) {
-            try {
-              setUser(JSON.parse(saved));
-            } catch { localStorage.removeItem('ec_user'); }
-          }
+          if (saved) { try { setUser(JSON.parse(saved)); } catch { localStorage.removeItem('ec_user'); } }
         }
         setAuthLoading(false);
       })
-      .catch((err) => {
-        console.log('Catalyst Auth: not authenticated', err?.message || err);
-        // Check localStorage fallback
+      .catch(() => {
+        // Not authenticated — that's fine, check localStorage
         const saved = localStorage.getItem('ec_user');
-        if (saved) {
-          try {
-            setUser(JSON.parse(saved));
-          } catch { localStorage.removeItem('ec_user'); }
-        }
+        if (saved) { try { setUser(JSON.parse(saved)); } catch { localStorage.removeItem('ec_user'); } }
         setAuthLoading(false);
       });
-  }, [syncCatalystUser, enablePushNotifications]);
+  }, [syncCatalystUser]);
 
   const loginUser = useCallback((userData) => {
     setUser(userData);
@@ -171,11 +164,8 @@ function AppProvider({ children }) {
 
   // Trigger Catalyst default login form
   const triggerCatalystLogin = useCallback(() => {
-    if (window.catalyst?.auth?.signIn) {
-      window.catalyst.auth.signIn('login');
-    } else {
-      console.error('Catalyst auth.signIn not available');
-    }
+    // Redirect to Catalyst's built-in login page
+    window.location.href = '/__catalyst/auth/login';
   }, []);
 
   // Legacy: kept for compatibility but now just enables push
