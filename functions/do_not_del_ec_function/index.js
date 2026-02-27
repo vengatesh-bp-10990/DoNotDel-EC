@@ -3,9 +3,13 @@
 const express = require('express');
 const catalyst = require('zcatalyst-sdk-node');
 const bcrypt = require('bcryptjs');
+const cors = require('cors');
 
 const app = express();
 app.use(express.json());
+
+// Allow all origins (Slate hosting uses different subdomains)
+app.use(cors({ origin: true, credentials: true }));
 
 const ADMIN_EMAIL = 'vengi9360@gmail.com';
 const CACHE_SEGMENT_ID = '21282000000050152';

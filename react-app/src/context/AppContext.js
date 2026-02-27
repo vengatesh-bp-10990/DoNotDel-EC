@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 const AppContext = createContext();
 const API_BASE = 'https://donotdel-ec-60047179487.development.catalystserverless.in/server/do_not_del_ec_function';
 
-// ─── Show browser notification helper ───
+// ─── Browser Notification Helper ───
 function showBrowserNotification(data) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
@@ -48,148 +48,85 @@ function playNotificationSound() {
 }
 
 function AppProvider({ children }) {
-  /* ─── User State ─── */
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const pushInitRef = useRef(false);
+  /* ─── User State (restored from localStorage on mount) ─── */
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ec_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [authLoading, setAuthLoading] = useState(false);
 
   /* ─── Auth Modal State ─── */
   const [showAuthModal, setShowAuthModal] = useState(false);
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
   const closeAuthModal = useCallback(() => setShowAuthModal(false), []);
 
-  // ─── Enable Catalyst Push Notifications ───
-  const enablePushNotifications = useCallback(async () => {
-    if (pushInitRef.current) return;
-    try {
-      pushInitRef.current = true;
+  // ─── Notification Polling (Cache-based) ───
+  const pollingRef = useRef(null);
 
-      // Request browser notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
+  const startNotificationPolling = useCallback((email) => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    if (!email) return;
 
-      // Enable Catalyst Push Notifications (real-time via WebSocket)
-      if (window.catalyst?.notification?.enableNotification) {
-        console.log('Catalyst Push: enabling...');
-        const result = await window.catalyst.notification.enableNotification();
-        console.log('Catalyst Push: enabled', result);
-
-        // Handle incoming push messages
-        window.catalyst.notification.messageHandler = (msg) => {
-          console.log('Catalyst Push: received', msg);
-          try {
-            const data = typeof msg === 'string' ? JSON.parse(msg) : msg;
-            window.dispatchEvent(new CustomEvent('catalyst-push', { detail: data }));
-            playNotificationSound();
-            showBrowserNotification(data);
-          } catch (e) { console.error('Push message parse error:', e); }
-        };
-      } else {
-        console.warn('Catalyst Push: notification API not available');
-        pushInitRef.current = false;
-      }
-    } catch (e) {
-      console.error('Catalyst Push: enable failed:', e.message || e);
-      pushInitRef.current = false;
+    // Request browser notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
     }
+
+    console.log('Notifications: polling started for', email);
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/notifications/check?email=${encodeURIComponent(email)}`);
+        const data = await res.json();
+        if (data.success && data.notifications?.length > 0) {
+          for (const notif of data.notifications) {
+            window.dispatchEvent(new CustomEvent('catalyst-push', { detail: notif }));
+            playNotificationSound();
+            showBrowserNotification(notif);
+          }
+        }
+      } catch (e) { /* polling error — ignore */ }
+    };
+
+    poll(); // Poll immediately
+    pollingRef.current = setInterval(poll, 10000); // Then every 10s
   }, []);
 
-  // ─── Catalyst Auth: afterSignIn handler ───
-  // Called by Catalyst SDK after user signs in via the default login form
-  const syncCatalystUser = useCallback(async (catalystUser) => {
-    try {
-      const email = catalystUser?.email_id || catalystUser?.email;
-      const name = [catalystUser?.first_name, catalystUser?.last_name].filter(Boolean).join(' ') || email?.split('@')[0];
-      if (!email) return;
+  const stopNotificationPolling = useCallback(() => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+  }, []);
 
-      console.log('Catalyst Auth: syncing user', email);
-      // Sync to our Datastore (creates user if new, returns role)
-      const res = await fetch(`${API_BASE}/auth/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name })
-      });
-      const data = await res.json();
-      if (data.success && data.user) {
-        setUser(data.user);
-        localStorage.setItem('ec_user', JSON.stringify(data.user));
-        console.log('Catalyst Auth: user synced', data.user.Role);
-      }
-
-      // Enable push notifications now that user is authenticated via Catalyst
-      await enablePushNotifications();
-    } catch (e) {
-      console.error('Catalyst Auth sync error:', e);
-    }
-  }, [enablePushNotifications]);
-
-  // ─── Initialize Catalyst Auth ───
+  // Auto-start polling when user is logged in
   useEffect(() => {
-    const cat = window.catalyst;
-    if (!cat?.auth) {
-      // No Catalyst SDK — fall back to localStorage
-      const saved = localStorage.getItem('ec_user');
-      if (saved) { try { setUser(JSON.parse(saved)); } catch { localStorage.removeItem('ec_user'); } }
-      setAuthLoading(false);
-      return;
+    if (user?.Email) {
+      startNotificationPolling(user.Email);
     }
+    return () => stopNotificationPolling();
+  }, [user?.Email, startNotificationPolling, stopNotificationPolling]);
 
-    // Check if user is already signed in (session cookie)
-    cat.auth.isUserAuthenticated()
-      .then(async (result) => {
-        console.log('Catalyst Auth: authenticated', result);
-        const userData = result?.content || result;
-        if (userData?.email_id || userData?.email) {
-          await syncCatalystUser(userData);
-        } else {
-          // Might have localStorage from previous session
-          const saved = localStorage.getItem('ec_user');
-          if (saved) { try { setUser(JSON.parse(saved)); } catch { localStorage.removeItem('ec_user'); } }
-        }
-        setAuthLoading(false);
-      })
-      .catch(() => {
-        // Not authenticated — that's fine, check localStorage
-        const saved = localStorage.getItem('ec_user');
-        if (saved) { try { setUser(JSON.parse(saved)); } catch { localStorage.removeItem('ec_user'); } }
-        setAuthLoading(false);
-      });
-  }, [syncCatalystUser]);
-
+  // ─── Auth Functions ───
   const loginUser = useCallback((userData) => {
     setUser(userData);
     localStorage.setItem('ec_user', JSON.stringify(userData));
   }, []);
 
-  // Trigger Catalyst default login form
-  const triggerCatalystLogin = useCallback(() => {
-    // Redirect to Catalyst's built-in login page
-    // Pass service_url so after login it redirects to our app root (not /app/index.html which 404s on Slate)
-    const redirectUrl = encodeURIComponent(window.location.origin + '/');
-    window.location.href = `/__catalyst/auth/login?service_url=${redirectUrl}`;
+  // Kept for backward compatibility with Login/Signup pages
+  const establishCatalystSession = useCallback(async (tokenData, email) => {
+    console.log('Session established for', email);
   }, []);
 
-  // Legacy: kept for compatibility but now just enables push
-  const establishCatalystSession = useCallback(async (tokenData, email) => {
-    await enablePushNotifications();
-  }, [enablePushNotifications]);
-
   const logoutUser = useCallback(() => {
-    pushInitRef.current = false;
+    stopNotificationPolling();
     setUser(null);
     localStorage.removeItem('ec_user');
     localStorage.removeItem('ec_jwt');
     localStorage.removeItem('ec_push_email');
     localStorage.removeItem('cartItems');
     setCartItems([]);
-    // Sign out of Catalyst Auth
-    if (window.catalyst?.auth?.signOut) {
-      window.catalyst.auth.signOut('/').catch(() => {});
-    } else {
-      window.location.href = '/';
-    }
-  }, []);
+    window.location.href = '/';
+  }, [stopNotificationPolling]);
 
   /* ─── Cart State ─── */
   const [cartItems, setCartItems] = useState(() => {
@@ -320,7 +257,6 @@ function AppProvider({ children }) {
         loginUser,
         logoutUser,
         establishCatalystSession,
-        triggerCatalystLogin,
         // Auth Modal
         showAuthModal,
         openAuthModal,
