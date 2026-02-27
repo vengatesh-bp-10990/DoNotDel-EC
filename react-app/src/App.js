@@ -143,6 +143,123 @@ function LocationPicker() {
   );
 }
 
+function NotificationBell() {
+  const { notifications, unreadCount, markNotificationRead, markAllNotificationsRead, clearNotifications } = useApp();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const bellRef = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) { if (bellRef.current && !bellRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleNotifClick = (notif) => {
+    markNotificationRead(notif.id);
+    setOpen(false);
+    if (notif.orderId) {
+      navigate(`/order/${notif.orderId}`);
+    } else if (notif.type === 'NEW_ORDER' && notif.orderId) {
+      navigate(`/admin/orders`);
+    }
+  };
+
+  const formatTime = (ts) => {
+    if (!ts) return '';
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  };
+
+  const getNotifIcon = (type) => {
+    if (type === 'ORDER_STATUS') return '\ud83d\udce6';
+    if (type === 'NEW_ORDER') return '\ud83d\uded2';
+    if (type === 'TEST') return '\ud83d\udd14';
+    return '\ud83d\udce2';
+  };
+
+  return (
+    <div className="relative" ref={bellRef}>
+      <button
+        onClick={() => { setOpen(!open); if (!open && unreadCount > 0) markAllNotificationsRead(); }}
+        className="relative p-2 rounded-xl text-gray-500 hover:text-amber-600 hover:bg-amber-50 transition-all"
+        title="Notifications"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm animate-pulse">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-slide-down">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+            <h3 className="text-sm font-bold text-gray-800">Notifications</h3>
+            {notifications.length > 0 && (
+              <button onClick={() => clearNotifications()} className="text-xs text-gray-400 hover:text-red-500 transition-colors">
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {/* Notification List */}
+          <div className="max-h-80 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 px-4">
+                <svg className="w-12 h-12 text-gray-200 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                <p className="text-sm text-gray-400">No notifications yet</p>
+              </div>
+            ) : (
+              notifications.map((notif) => (
+                <button
+                  key={notif.id}
+                  onClick={() => handleNotifClick(notif)}
+                  className={`w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-amber-50 transition-all border-b border-gray-50 last:border-0 ${
+                    !notif.read ? 'bg-amber-50/40' : ''
+                  }`}
+                >
+                  <span className="text-lg flex-shrink-0 mt-0.5">{getNotifIcon(notif.type)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm ${!notif.read ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
+                      {notif.message}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatTime(notif.timestamp)}</p>
+                  </div>
+                  {!notif.read && (
+                    <span className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0 mt-2"></span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          {notifications.length > 0 && (
+            <div className="border-t border-gray-100 px-4 py-2.5 bg-gray-50/50">
+              <button
+                onClick={() => { setOpen(false); navigate('/orders'); }}
+                className="w-full text-center text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+              >
+                View All Orders &rarr;
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Navbar() {
   const { cartCount, isAuthenticated, user, logoutUser, openAuthModal } = useApp();
   const navigate = useNavigate();
@@ -192,6 +309,9 @@ function Navbar() {
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">{cartCount}</span>
               )}
             </Link>
+
+            {/* Notification Bell — visible only when logged in */}
+            {isAuthenticated && <NotificationBell />}
 
             {isAuthenticated ? (
               <div className="relative ml-1 sm:ml-2" ref={dropdownRef}>

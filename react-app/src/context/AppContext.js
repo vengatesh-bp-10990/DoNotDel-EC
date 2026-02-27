@@ -57,6 +57,54 @@ function AppProvider({ children }) {
   });
   const [authLoading, setAuthLoading] = useState(false);
 
+  /* ─── In-app Notification List ─── */
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ec_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  // Persist notifications to localStorage
+  useEffect(() => {
+    localStorage.setItem('ec_notifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  const addNotifications = useCallback((newNotifs) => {
+    setNotifications(prev => {
+      const enriched = newNotifs.map((n, i) => ({
+        ...n,
+        id: n.id || 'notif-' + Date.now() + '-' + i,
+        timestamp: n.timestamp || Date.now(),
+        read: false,
+        // Build a human-readable message
+        message: n.type === 'ORDER_STATUS'
+          ? `Order #${(n.orderId || '').toString().slice(-5)} — ${n.status}`
+          : n.type === 'NEW_ORDER'
+          ? `New order from ${n.customerName || 'Customer'} — ₹${parseFloat(n.total || 0).toFixed(0)}`
+          : n.type === 'TEST'
+          ? (n.body || n.title || 'Test notification')
+          : 'New notification',
+      }));
+      // Keep max 50 notifications
+      return [...enriched, ...prev].slice(0, 50);
+    });
+  }, []);
+
+  const markNotificationRead = useCallback((notifId) => {
+    setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  }, []);
+
+  const clearNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
   /* ─── Auth Modal State ─── */
   const [showAuthModal, setShowAuthModal] = useState(false);
   const openAuthModal = useCallback(() => setShowAuthModal(true), []);
@@ -84,10 +132,11 @@ function AppProvider({ children }) {
         const res = await fetch(`${API_BASE}/notifications/check?email=${encodeURIComponent(email)}`);
         const data = await res.json();
         if (data.success && data.notifications?.length > 0) {
+          // Add to in-app notification bell
+          addNotifications(data.notifications);
           for (const notif of data.notifications) {
             window.dispatchEvent(new CustomEvent('catalyst-push', { detail: notif }));
             playNotificationSound();
-            showBrowserNotification(notif);
           }
         }
       } catch (e) { /* polling error — ignore */ }
@@ -132,10 +181,12 @@ function AppProvider({ children }) {
     stopNotificationPolling();
     setNotificationsEnabledState(false);
     setUser(null);
+    setNotifications([]);
     localStorage.removeItem('ec_user');
     localStorage.removeItem('ec_jwt');
     localStorage.removeItem('ec_push_email');
     localStorage.removeItem('ec_notif_enabled');
+    localStorage.removeItem('ec_notifications');
     localStorage.removeItem('cartItems');
     setCartItems([]);
     window.location.href = '/';
@@ -285,6 +336,11 @@ function AppProvider({ children }) {
         // Notifications
         notificationsEnabled,
         setNotificationsEnabled,
+        notifications,
+        unreadCount,
+        markNotificationRead,
+        markAllNotificationsRead,
+        clearNotifications,
         // Location
         location,
         setLocation,
